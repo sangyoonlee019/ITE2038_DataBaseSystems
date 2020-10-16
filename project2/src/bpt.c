@@ -52,7 +52,7 @@
  *
  */
 
-#include "db.h"
+#include "bpt.h"
 #include "file.h"
 
 // GLOBALS.
@@ -69,14 +69,17 @@
  */
 int order = DEFAULT_LEAF_ORDER;
 int leafOrder = DEFAULT_LEAF_ORDER;
-int indexOrder = DEFAULT_INDEX_ORDER;
+int internalOrder = DEFAULT_INTERNAL_ORDER;
+int tableID = DEFAULT_TABLE_ID;
+int dataFile;
+HeaderPage headerPage;
 
 /* The queue is used to print the tree in
  * level order, starting from the root
  * printing each entire rank on a separate
  * line, finishing with the leaves.
  */
-node * queue = NULL;
+pagenum_t queue[MAX_NODE_NUMBER];
 
 /* The user can toggle on and off the "verbose"
  * property, which causes the pointer addresses
@@ -104,19 +107,404 @@ void license_notice( void ) {
 /* Open table from path's datafile.
  */
 int open_table( char* pathname ){
-    printf("%s: open table!\n",pathname);
-    return 0;
+    printf("%s: open_table is called\n",pathname);
+    if (file_open_table(pathname,OPEN_EXIST)==-1){
+        if (file_open_table(pathname,OPEN_NEW)==-1){
+            printf("error: creating the new datafile\n");
+            return -1;
+        }
+        headerPage.freePageNumber = 0;
+        headerPage.rootPageNumber = 0;
+        headerPage.numberOfPage = 1;
+        file_write_page(HEADER_PAGE_NUMBER, (page_t*)&headerPage);        
+    }else{
+        file_read_page(HEADER_PAGE_NUMBER,(page_t*)&headerPage);
+        // printf("%d, %d, %d\n",headerPage.freePageNumber,headerPage.rootPageNumber,headerPage.numberOfPage);
+    }
+    tableID++;
+    printf("table: %d is created!\n",tableID);
+    return tableID;
 }
 
-int db_insert (int64_t key, char * value){
-    printf("%lld: %s - key is inserted!\n",key,value);
-    return 0;
+int close_table(){
+    return file_close_table();
 }
 
 int db_find (int64_t key, char * ret_val){
-    printf("%lld: %s - key is found!\n",key,ret_val);
-    strcpy(ret_val,"something");
+    // Table is not opend yet.
+    if (!file_table_is_open()){
+        return -1;
+    }
+    
+    LeafPage leafNode;
+    if(findLeaf(key,&leafNode)==0){
+        return -2;
+    }
+    // BS
+    for (int i=0;i<leafNode.numberOfKeys;i++){
+        if (leafNode.records[i].key == key){
+            memcpy(ret_val,leafNode.records[i].value,VALUE_SIZE);
+            return 0;
+        }
+    }
+    return -1;
+}
+
+pagenum_t findLeaf(int64_t key, LeafPage* retLeafNode){
+    pagenum_t rootPageNum = headerPage.rootPageNumber; 
+    if (rootPageNum == 0) {
+        return 0;
+    }
+    pagenum_t nextPageNum = rootPageNum; 
+    InternalPage node;
+    file_read_page(rootPageNum, (page_t*)&node);
+    while (!node.isLeaf) {
+        // BS
+        int i = 0;
+        while (i < node.numberOfKeys) {
+            if (key >= node.recordIDs[i].key) i++;
+            else break;
+        }
+        nextPageNum = pageNumOf(&node,i);
+        file_read_page(nextPageNum, (page_t*)&node);
+    }
+    memcpy(retLeafNode, &node, sizeof(LeafPage));
+    return nextPageNum;
+}
+
+int db_insert (int64_t key, char * value){
+    // Table is not opend yet.
+    if (!file_table_is_open()){
+        return -1;
+    }
+
+    /* The current implementation ignores
+     * duplicates.
+     */
+    char valueFound[120];
+    if (db_find(key, valueFound) == 0){
+        return -1;
+    }   
+    // printf("1\n");
+    /* Case: the tree does not exist yet.
+     * Start a new tree.
+     */
+
+    if (headerPage.rootPageNumber == 0) {
+        startNewTree(key,value);
+        return 0;
+    }
+    // printf("2\n");
+    /* Case: the tree already exists.
+     * (Rest of function body.)
+     */
+
+    LeafPage leafNode;
+    pagenum_t leafPageNum;
+    leafPageNum = findLeaf(key, &leafNode);
+    // printf("3\n");
+    /* Case: leaf has room for key and pointer.
+     */
+
+    if (leafNode.numberOfKeys < leafOrder - 1) {
+        insertIntoLeaf(&leafNode, leafPageNum, key, value);
+        return 0;
+    }
+    
+    // printf("3\n");
+    /* Case:  leaf must be split.
+     */
+
+    insertIntoLeafAfterSplitting(&leafNode, leafPageNum, key, value);
     return 0;
+}
+
+void startNewTree(int64_t key, char* value){
+    pagenum_t freePageNum;
+    freePageNum = file_alloc_page();
+
+    LeafPage rootNode;
+    rootNode.parentPageNumber = 0;
+    rootNode.isLeaf = true;
+    rootNode.numberOfKeys = 1;
+    rootNode.rightSiblingPageNumber = 0;
+    rootNode.records[0].key = key;
+    memcpy(rootNode.records[0].value, value, VALUE_SIZE);
+    file_write_page(freePageNum, (page_t*)&rootNode);
+
+    headerPage.rootPageNumber = freePageNum;
+    file_write_page(HEADER_PAGE_NUMBER, (page_t*)&headerPage);
+}
+
+void insertIntoLeaf(LeafPage* leafNode, pagenum_t leafPageNum, int64_t key, char* value){
+    // BS
+    int insertionPoint = 0;
+    while (insertionPoint < leafNode->numberOfKeys && leafNode->records[insertionPoint].key < key)
+        insertionPoint++;
+
+    for (int i = leafNode->numberOfKeys; i > insertionPoint; i--) {
+        leafNode->records[i].key = leafNode->records[i-1].key;
+        memcpy(leafNode->records[i].value, leafNode->records[i-1].value, VALUE_SIZE);
+    }
+    leafNode->records[insertionPoint].key = key;
+    memcpy(leafNode->records[insertionPoint].value, value, VALUE_SIZE);
+    leafNode->numberOfKeys++;
+    file_write_page(leafPageNum, (page_t*)leafNode);
+}
+
+void insertIntoLeafAfterSplitting(LeafPage* leafNode, pagenum_t leafPageNum, int64_t key, char* value){
+    int i, j;
+    LeafPage newLeafNode;
+    newLeafNode.isLeaf = true;
+    newLeafNode.numberOfKeys  = 0;
+    newLeafNode.rightSiblingPageNumber = leafPageNum;
+    // printf("4\n");
+    // BS
+    int insertionIndex = 0;
+    while (insertionIndex < leafOrder - 1 && leafNode->records[insertionIndex].key < key)
+        insertionIndex++;
+
+    int split = cut(leafOrder - 1);
+
+    // printf("7\n");
+    /* Case:  insertion_index behingd split.
+     */
+    if (insertionIndex >= split){
+        
+        // Insert to newLeafNode
+        for (i = split, j = 0; i<leafOrder-1;i++, j++){
+            if(i!=insertionIndex){
+                newLeafNode.records[j].key = leafNode->records[i].key;
+                memcpy(newLeafNode.records[j].value, leafNode->records[i].value, VALUE_SIZE); 
+                newLeafNode.numberOfKeys++;
+
+                // Delete moved records in oldLeafNode
+                leafNode->records[i].key = 0;
+                memset(leafNode->records[i].value, 0, VALUE_SIZE);
+                leafNode->numberOfKeys--; 
+            }
+        }
+
+        // Insert new record
+        newLeafNode.records[insertionIndex-split].key = key;
+        memcpy(newLeafNode.records[insertionIndex-split].value, value, VALUE_SIZE);
+        newLeafNode.numberOfKeys++;
+    }else{
+        /* Case:  split behind insertion_index.
+         */
+        // printf("6\n");
+        // Insert to newLeafNode
+        for (i = split-1, j = 0; i<leafOrder-1; i++, j++){
+            newLeafNode.records[j].key = leafNode->records[i].key;
+            memcpy(newLeafNode.records[j].value, leafNode->records[i].value, VALUE_SIZE); 
+            newLeafNode.numberOfKeys++;
+
+            // Delete moved records in oldLeafNode
+            leafNode->records[i].key = 0;
+            memset(leafNode->records[i].value, 0, VALUE_SIZE);
+            leafNode->numberOfKeys--;
+            // printf("!%d\n",j);
+        }
+        
+        // Shift records behind insertion_index in oldLeafNode
+        for (i = split-1; i>insertionIndex; i--){
+            leafNode->records[i].key = leafNode->records[i-1].key;
+            memcpy(leafNode->records[i].value, leafNode->records[i-1].value, VALUE_SIZE);
+        }
+        
+        // Insert new record to oldLeafNode.
+        leafNode->records[insertionIndex].key = key;
+        memcpy(leafNode->records[insertionIndex].value, value, VALUE_SIZE);
+        leafNode->numberOfKeys++;
+
+    }
+    
+    // newLeafNode next page pointer!
+
+    pagenum_t newLeafPageNum = file_alloc_page();
+    newLeafNode.rightSiblingPageNumber = leafNode->rightSiblingPageNumber;
+    leafNode->rightSiblingPageNumber = newLeafPageNum;
+
+    int64_t newKey;
+    newLeafNode.parentPageNumber = leafNode->parentPageNumber;
+    newKey = newLeafNode.records[0].key;
+
+    file_write_page(leafPageNum,(page_t*)leafNode);
+    file_write_page(newLeafPageNum,(page_t*)&newLeafNode);
+    // printf("5\n");
+    insertIntoParent((NodePage*)leafNode, leafPageNum, newKey, (NodePage*)&newLeafNode, newLeafPageNum);
+}
+
+void insertIntoParent(NodePage* leftNode, pagenum_t leftPageNum, int64_t key, NodePage* rightNode, pagenum_t rightPageNum){
+    int leftIndex;
+    InternalPage parentNode;
+    pagenum_t parentPageNum;
+
+    // parent = left->parent;
+
+    /* Case: new root. */
+
+    parentPageNum = leftNode->parentPageNumber;
+    if (parentPageNum == 0){
+        insertIntoNewRoot(leftNode, leftPageNum, key, rightNode, rightPageNum);
+        return;
+    }
+
+    /* Case: leaf or node. (Remainder of
+     * function body.)  
+     */
+
+    /* Find the parent's pointer to the left 
+     * node.
+     */
+
+    file_read_page(leftNode->parentPageNumber,(page_t*)&parentNode);
+    leftIndex = getLeftIndex(&parentNode, leftPageNum);
+
+
+    /* Simple case: the new key fits into the node. 
+     */
+
+    if (parentNode.numberOfKeys < internalOrder - 1){
+        insertIntoInternal(&parentNode, parentPageNum, leftIndex, key, rightPageNum);
+        return;
+    }
+
+    /* Harder case:  split a node in order 
+     * to preserve the B+ tree properties.
+     */
+
+    insertIntoInternalAfterSplitting(&parentNode, parentPageNum, leftIndex, key, rightPageNum);
+}
+
+void insertIntoNewRoot(NodePage* leftNode, pagenum_t leftPageNum, int64_t key, NodePage* rightNode, pagenum_t rightPageNum){
+    InternalPage rootNode;
+    pagenum_t rootPageNum;
+    
+    rootNode.parentPageNumber = 0;
+    rootNode.isLeaf = false;
+    rootNode.numberOfKeys = 1;
+    rootNode.oneMorePageNumber = leftPageNum;
+    rootNode.recordIDs[0].key = key;
+    rootNode.recordIDs[0].pageNumber = rightPageNum;
+    
+    rootPageNum = file_alloc_page();
+    file_write_page(rootPageNum, (page_t*)&rootNode);
+
+    leftNode->parentPageNumber = rootPageNum;
+    file_write_page(leftPageNum, (page_t*)leftNode);
+    rightNode->parentPageNumber = rootPageNum;
+    file_write_page(rightPageNum, (page_t*)rightNode);
+
+    headerPage.rootPageNumber = rootPageNum;
+    file_write_page(HEADER_PAGE_NUMBER, (page_t*)&headerPage);
+}
+
+int getLeftIndex(InternalPage* parentNode, pagenum_t leftPageNum){
+    // BS
+    int leftIndex = 0;
+    while (leftIndex <= parentNode->numberOfKeys && 
+            pageNumOf(parentNode, leftIndex) != leftPageNum)
+        leftIndex++;
+    return leftIndex;
+}
+
+void insertIntoInternal(InternalPage* parentNode, pagenum_t parentPageNum,
+         int leftIndex, int64_t key, pagenum_t rightPageNum){
+    for (int i = parentNode->numberOfKeys; i > leftIndex; i--) {
+        setPageNum(parentNode, i+1, pageNumOf(parentNode, i));
+        parentNode->recordIDs[i].key = parentNode->recordIDs[i-1].key; 
+    }
+
+    setPageNum(parentNode, leftIndex+1, rightPageNum);
+    parentNode->recordIDs[leftIndex].key = key;
+    parentNode->numberOfKeys++;
+
+    file_write_page(parentPageNum, (page_t*)parentNode);
+}
+
+void insertIntoInternalAfterSplitting(InternalPage* parentNode, pagenum_t parentPageNum,
+         int leftIndex, int64_t key, pagenum_t rightPageNum){
+    int i, j;
+    pagenum_t newInternalPageNum;
+    int64_t * tempKeys;
+    pagenum_t* tempPageNums;
+
+    
+
+    tempPageNums = malloc( (internalOrder + 1) * sizeof(pagenum_t) );
+    if (tempPageNums == NULL) {
+        perror("Temporary pageNumbers array for splitting nodes.");
+        exit(EXIT_FAILURE);
+    }
+    tempKeys = malloc( internalOrder * sizeof(int64_t) );
+    if (tempKeys == NULL) {
+        perror("Temporary keys array for splitting nodes.");
+        exit(EXIT_FAILURE);
+    }
+
+    for (i = 0, j = 0; i < parentNode->numberOfKeys + 1; i++, j++) {
+        if (j == leftIndex + 1) j++;
+        tempPageNums[j] = pageNumOf(parentNode,i);
+    }
+
+    for (i = 0, j = 0; i < parentNode->numberOfKeys; i++, j++) {
+        if (j == leftIndex) j++;
+        tempKeys[j] = parentNode->recordIDs[i].key;
+    }
+
+    tempPageNums[leftIndex + 1] = rightPageNum;
+    tempKeys[leftIndex] = key;
+
+
+    /* Create the new node and copy
+     * half the keys and pointers to the
+     * old and half to the new.
+     */  
+    int split = cut(internalOrder);
+    InternalPage newInternalNode;
+    newInternalNode.isLeaf = false;
+    newInternalNode.numberOfKeys  = 0;
+    newInternalPageNum = file_alloc_page();
+    newInternalNode.parentPageNumber = parentNode->parentPageNumber;
+
+    parentNode->numberOfKeys = 0;
+    for (i = 0; i < split - 1; i++) {
+        setPageNum(parentNode,i,tempPageNums[i]);
+        parentNode->recordIDs[i].key = tempKeys[i];
+        parentNode->numberOfKeys++;
+        // printf("%lld!!\n",parentNode->numberOfKeys);
+    }
+    setPageNum(parentNode,i,tempPageNums[i]);
+    int primeKey = tempKeys[split - 1];
+    for (++i, j = 0; i < internalOrder; i++, j++) {
+        setPageNum(&newInternalNode,j,tempPageNums[i]);
+        newInternalNode.recordIDs[j].key = tempKeys[i];
+        newInternalNode.numberOfKeys++;
+    }
+    setPageNum(&newInternalNode,j,tempPageNums[i]);
+    free(tempPageNums);
+    free(tempKeys);
+
+    NodePage childNode;
+    for (i = 0; i <= newInternalNode.numberOfKeys; i++) {
+        file_read_page(pageNumOf(&newInternalNode,i),(page_t*)&childNode);
+        childNode.parentPageNumber = newInternalPageNum;
+        file_write_page(pageNumOf(&newInternalNode,i),(page_t*)&childNode);
+    }
+    // printPage(252);
+    // printNode((NodePage*)parentNode,parentPageNum);
+
+    file_write_page(parentPageNum,(page_t*)parentNode);
+    file_write_page(newInternalPageNum,(page_t*)&newInternalNode);
+
+    /* Insert a new key into the parent of the two
+     * nodes resulting from the split, with
+     * the old node to the left and the new to the right.
+     */
+
+    // printPage(252);
+    insertIntoParent((NodePage*)parentNode, parentPageNum, primeKey, (NodePage*)&newInternalNode, newInternalPageNum);
 }
 
 int db_delete (int64_t key){
@@ -124,6 +512,140 @@ int db_delete (int64_t key){
     return 0;
 }
 
+
+void printTree(void){
+    int i;
+    int front = 0;
+    int back = 0;
+    int rank = 0;
+    int newRank = 0;
+
+    if (headerPage.rootPageNumber == 0) {
+		printf("Empty tree.\n");
+        return;
+    }
+    queue[back]=headerPage.rootPageNumber;
+    back++;
+    while (front < back) {
+        pagenum_t nodePageNum = queue[front];
+        front++;
+
+        NodePage node;
+        file_read_page(nodePageNum, (page_t*)&node);
+        if(node.parentPageNumber != 0 ){
+            InternalPage parentNode;
+            file_read_page(node.parentPageNumber, (page_t*)&parentNode);
+            if(pageNumOf(&parentNode, 0) == nodePageNum){
+                // printf("3\n");
+                newRank = pathToRoot(&node);
+                if (newRank != rank){
+                    rank = newRank;
+                    printf("\n");
+                } 
+            }
+        }
+
+        // printf("4\n");
+        if(node.isLeaf){
+            LeafPage* leafNode = (LeafPage*)&node;
+            printf("(%llu) ",nodePageNum);
+            for (i = 0;i<leafNode->numberOfKeys;i++){
+                printf("%lld ",leafNode->records[i].key);
+            }
+        }else{
+            InternalPage* internalNode = (InternalPage*)&node;
+            printf("(%llu) ",nodePageNum);
+            for (i = 0;i<internalNode->numberOfKeys;i++){
+                printf("%lld ",internalNode->recordIDs[i].key);
+                // printf("enque: %lld",pageNumOf(internalNode,i));
+                queue[back]=pageNumOf(internalNode,i);
+                back++;
+            }
+            // printf("enque: %lld",pageNumOf(internalNode,i));
+            queue[back]=pageNumOf(internalNode,i);
+            back++;
+        }
+        printf("| ");
+        // printf("end");
+    }
+    printf("\n");
+}
+
+int pathToRoot(NodePage* node){
+    int length = 0;
+    NodePage child;
+    pagenum_t parentPageNum;
+    parentPageNum = node->parentPageNumber;
+    while(parentPageNum != 0){
+        file_read_page(parentPageNum,(page_t*)&child);
+        parentPageNum = child.parentPageNumber;
+        length++;
+    }
+    return length;
+}
+
+void printPage(pagenum_t pageNum){
+    NodePage node;
+    int i;
+    file_read_page(pageNum, (page_t*)&node);
+    
+    if (node.isLeaf){
+        printf("LeafPage %llu:\n",pageNum);
+        printf("#parentPage - %llu\n",node.parentPageNumber);
+        printf("#keys %d:\n",node.numberOfKeys);
+        
+        
+        LeafPage* leafNode = (LeafPage*)&node;
+        printf("#rightSibling %llu:\n",leafNode->rightSiblingPageNumber);
+        printf("records - \n");
+        for (i=0;i<node.numberOfKeys;i++){
+            printf("( %lld, %s ) ",leafNode->records[i].key,leafNode->records[i].value);
+        }
+        printf("\n");
+        return;
+    }
+    printf("InternalPage %llu:\n",pageNum);
+        printf("#parentPage - %llu\n",node.parentPageNumber);
+        printf("#keys %d:\n",node.numberOfKeys);
+        
+        InternalPage* leafNode = (InternalPage*)&node;
+        printf("recordIDs - \n");
+        for (i=0;i<node.numberOfKeys;i++){
+            printf("(%llu) %lld  ",pageNumOf(leafNode,i),leafNode->recordIDs[i].key);
+        }
+        printf("(%llu)",pageNumOf(leafNode,i));
+        printf("\n");
+}
+
+void printNode(NodePage* node, pagenum_t nodePageNum){
+    int i;
+    if (node->isLeaf){
+        printf("LeafPage %llu:\n",nodePageNum);
+        printf("#parentPage - %llu\n",node->parentPageNumber);
+        printf("#keys %d:\n",node->numberOfKeys);
+        
+        
+        LeafPage* leafNode = (LeafPage*)node;
+        printf("#rightSibling %llu:\n",leafNode->rightSiblingPageNumber);
+        printf("records - \n");
+        for (i=0;i<node->numberOfKeys;i++){
+            printf("( %lld, %s ) ",leafNode->records[i].key,leafNode->records[i].value);
+        }
+        printf("\n");
+        return;
+    }
+    printf("InternalPage %llu:\n",nodePageNum);
+        printf("#parentPage - %llu\n",node->parentPageNumber);
+        printf("#keys %d:\n",node->numberOfKeys);
+        
+        InternalPage* leafNode = (InternalPage*)node;
+        printf("recordIDs - \n");
+        for (i=0;i<node->numberOfKeys;i++){
+            printf("(%llu) %lld  ",pageNumOf(leafNode,i),leafNode->recordIDs[i].key);
+        }
+        printf("(%llu)",pageNumOf(leafNode,i));
+        printf("\n");
+}
 
 /* Routine to print portion of GPL license to stdout.
  */
@@ -208,32 +730,32 @@ void usage_3( void ) {
 /* Helper function for printing the
  * tree out.  See print_tree.
  */
-void enqueue( node * new_node ) {
-    node * c;
-    if (queue == NULL) {
-        queue = new_node;
-        queue->next = NULL;
-    }
-    else {
-        c = queue;
-        while(c->next != NULL) {
-            c = c->next;
-        }
-        c->next = new_node;
-        new_node->next = NULL;
-    }
-}
+// void enqueue( node * new_node ) {
+//     node * c;
+//     if (queue == NULL) {
+//         queue = new_node;
+//         queue->next = NULL;
+//     }
+//     else {
+//         c = queue;
+//         while(c->next != NULL) {
+//             c = c->next;
+//         }
+//         c->next = new_node;
+//         new_node->next = NULL;
+//     }
+// }
 
 
 /* Helper function for printing the
  * tree out.  See print_tree.
  */
-node * dequeue( void ) {
-    node * n = queue;
-    queue = queue->next;
-    n->next = NULL;
-    return n;
-}
+// node * dequeue( void ) {
+//     node * n = queue;
+//     queue = queue->next;
+//     n->next = NULL;
+//     return n;
+// }
 
 
 /* Prints the bottom row of keys
@@ -306,48 +828,48 @@ int path_to_root( node * root, node * child ) {
  * to the keys also appear next to their respective
  * keys, in hexadecimal notation.
  */
-void print_tree( node * root ) {
+// void print_tree( node * root ) {
 
-    node * n = NULL;
-    int i = 0;
-    int rank = 0;
-    int new_rank = 0;
+//     node * n = NULL;
+//     int i = 0;
+//     int rank = 0;
+//     int new_rank = 0;
 
-    if (root == NULL) {
-        printf("Empty tree.\n");
-        return;
-    }
-    queue = NULL;
-    enqueue(root);
-    while( queue != NULL ) {
-        n = dequeue();
-        if (n->parent != NULL && n == n->parent->pointers[0]) {
-            new_rank = path_to_root( root, n );
-            if (new_rank != rank) {
-                rank = new_rank;
-                printf("\n");
-            }
-        }
-        if (verbose_output) 
-            printf("(%lx)", (unsigned long)n);
-        for (i = 0; i < n->num_keys; i++) {
-            if (verbose_output)
-                printf("%lx ", (unsigned long)n->pointers[i]);
-            printf("%d ", n->keys[i]);
-        }
-        if (!n->is_leaf)
-            for (i = 0; i <= n->num_keys; i++)
-                enqueue(n->pointers[i]);
-        if (verbose_output) {
-            if (n->is_leaf) 
-                printf("%lx ", (unsigned long)n->pointers[order - 1]);
-            else
-                printf("%lx ", (unsigned long)n->pointers[n->num_keys]);
-        }
-        printf("| ");
-    }
-    printf("\n");
-}
+//     if (root == NULL) {
+//         printf("Empty tree.\n");
+//         return;
+//     }
+//     queue = NULL;
+//     enqueue(root);
+//     while( queue != NULL ) {
+//         n = dequeue();
+//         if (n->parent != NULL && n == n->parent->pointers[0]) {
+//             new_rank = path_to_root( root, n );
+//             if (new_rank != rank) {
+//                 rank = new_rank;
+//                 printf("\n");
+//             }
+//         }
+//         if (verbose_output) 
+//             printf("(%lx)", (unsigned long)n);
+//         for (i = 0; i < n->num_keys; i++) {
+//             if (verbose_output)
+//                 printf("%lx ", (unsigned long)n->pointers[i]);
+//             printf("%d ", n->keys[i]);
+//         }
+//         if (!n->is_leaf)
+//             for (i = 0; i <= n->num_keys; i++)
+//                 enqueue(n->pointers[i]);
+//         if (verbose_output) {
+//             if (n->is_leaf) 
+//                 printf("%lx ", (unsigned long)n->pointers[order - 1]);
+//             else
+//                 printf("%lx ", (unsigned long)n->pointers[n->num_keys]);
+//         }
+//         printf("| ");
+//     }
+//     printf("\n");
+// }
 
 
 /* Finds the record under a given key and prints an
@@ -452,7 +974,6 @@ node * find_leaf( node * root, int key, bool verbose ) {
     return c;
 }
 
-
 /* Finds and returns the record to which
  * a key refers.
  */
@@ -553,7 +1074,7 @@ int get_left_index(node * parent, node * left) {
  * Returns the altered leaf.
  */
 node * insert_into_leaf( node * leaf, int key, record * pointer ) {
-    // print("# insert_into_leaf(leaf: %d,key: %d,pointer: %d)\n",leaf,key,pointer);
+    // print("# insert_into_leaf(leaf: %d,fkey: %d,pointer: %d)\n",leaf,key,pointer);
     int i, insertion_point;
 
     insertion_point = 0;

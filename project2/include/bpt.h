@@ -1,5 +1,5 @@
-#ifndef __DB_H__
-#define __DB_H__
+#ifndef __BPT_H__
+#define __BPT_H__
 
 // Uncomment the line below if you are compiling on Windows.
 // #define WINDOWS
@@ -7,22 +7,26 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include "file.h"
+
 #ifdef WINDOWS
 #define bool char
 #define false 0
 #define true 1
 #endif
 
-// Default leaf order is 32.
-// Default index order is 249.
-#define DEFAULT_LEAF_ORDER 32
-#define DEFAULT_INDEX_ORDER 249
+#define DEFAULT_TABLE_ID 0
 
 // #########################수정해야함 min max
 // Minimum order is necessarily 3.  We set the maximum
 // order arbitrarily.  You may change the maximum order.
 #define MIN_ORDER 3
 #define MAX_ORDER 20
+#define HEADER_PAGE_NUMBER 0
+
+#define MAX_NODE_NUMBER 10000000
 
 // Constants for printing part or all of the GPL license.
 #define LICENSE_FILE "LICENSE.txt"
@@ -86,6 +90,8 @@ typedef struct node {
     struct node * next; // Used for queue.
 } node;
 
+
+
 // GLOBALS.
 
 /* The order determines the maximum and minimum
@@ -101,13 +107,16 @@ typedef struct node {
 extern int order;
 extern int leafOrder;
 extern int indexOrder;
+extern int tableID;
+extern int dataFile;
+extern HeaderPage headerPage;
 
 /* The queue is used to print the tree in
  * level order, starting from the root
  * printing each entire rank on a separate
  * line, finishing with the leaves.
  */
-extern node * queue;
+extern pagenum_t queue[MAX_NODE_NUMBER];
 
 /* The user can toggle on and off the "verbose"
  * property, which causes the pointer addresses
@@ -122,9 +131,30 @@ extern bool verbose_output;
 // Project2
 
 int open_table(char* pathname);
+int close_table(void);
 int db_insert (int64_t key, char * value);
 int db_find (int64_t key, char * ret_val);
 int db_delete (int64_t key);
+
+
+// New find functuin
+pagenum_t findLeaf(int64_t key, LeafPage* leafNode);
+
+// New insert function
+void startNewTree(int64_t key, char* value);
+void insertIntoLeaf(LeafPage* leafNode, pagenum_t leafPageNum, int64_t key, char* value);
+void insertIntoLeafAfterSplitting(LeafPage* leafNode, pagenum_t leafPageNum, int64_t key, char* value);
+void insertIntoParent(NodePage* leftNode, pagenum_t leftPageNum, int64_t key, NodePage* rightNode, pagenum_t rightPageNum);
+void insertIntoNewRoot(NodePage* leftNode, pagenum_t leftPageNum, int64_t key, NodePage* rightNode, pagenum_t rightPageNum);
+int getLeftIndex(InternalPage* parentNode, pagenum_t leftPageNum);
+void insertIntoInternal(InternalPage* parentNode, pagenum_t parentPageNum, int leftIndex, int64_t key, pagenum_t rightPageNum);
+void insertIntoInternalAfterSplitting(InternalPage* parentNode, pagenum_t parentPageNum, int leftIndex, int64_t key, pagenum_t rightPageNum);
+
+// New untility function
+void printTree(void);
+int pathToRoot(NodePage* node);
+void printPage(pagenum_t pageNum);
+void printNode(NodePage* node, pagenum_t nodePageNum);
 
 // Output and utility.
 
@@ -181,4 +211,4 @@ node * delete( node * root, int key );
 void destroy_tree_nodes(node * root);
 node * destroy_tree(node * root);
 
-#endif /* __DB_H__*/
+#endif /* __BPT_H__*/
