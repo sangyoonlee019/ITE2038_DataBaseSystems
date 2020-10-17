@@ -166,7 +166,7 @@ void adjustRoot(NodePage* rootNode, pagenum_t rootPageNum);
 int getNeighborIndex(NodePage* node, pagenum_t pageNum, InternalPage* parentNode);
 void coalesceNodes(NodePage* node, pagenum_t nodePageNum, NodePage* neighborNode, 
         pagenum_t neighborPageNum, InternalPage* parentNode, int neighborIndex, int64_t primeKey);
-void redistributeNodes(NodePage* node, pagenum_t nodePageNum, NodePage* neighborNode, 
+void redistributeInternalNodes(InternalPage* internalNode, pagenum_t internalPageNum, InternalPage* neighborNode, 
         pagenum_t neighborPageNum, InternalPage* parentNode, int neighborIndex, int primeKeyIndex, int64_t primeKey);
 
 // Output and utility.

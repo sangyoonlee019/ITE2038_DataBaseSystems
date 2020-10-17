@@ -33,15 +33,34 @@ int main( int argc, char ** argv ) {
         db_insert(i,some);
         
     }
-    
-    for (int i=0;i<1983;i++){
-        char some[120] = "abcdefge";
-        db_delete(i);
-        
-    }
     printTree();
-    db_delete(1983);
-    printTree();
+    // for (int i=2000;i<3000;i++){
+    //     db_delete(i);
+
+    // }
+    // printTree();
+    // }
+    // for (int i=0; i<5000;i++){
+    //   db_delete(i);
+    // }
+
+    // for (int i=2007;i<5003;i++){
+    //   db_delete(i);
+    // }
+    // printPage(4);
+    // printPage(3);
+    // printPage(631);
+    // printTree();
+    // printPage(1);
+    // db_delete(1983);
+    // printPage(3);
+    // printPage(631);
+    // printPage(630);
+    // db_delete(9984);
+    // printPage(4);
+    // printPage(252);
+    // printPage(2);
+    // printTree();
     // int imin=10000;
     // char some[120] = "abcdefge";
     // for (int i=9999;i>=0;i--){
