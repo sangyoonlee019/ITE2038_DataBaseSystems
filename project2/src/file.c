@@ -71,11 +71,19 @@ pagenum_t file_alloc_page(){
     freePageNum = headerPage.freePageNumber;
     file_read_page(freePageNum,(page_t*)&freePage);
     headerPage.freePageNumber = freePage.nextFreePageNumber;
+    file_write_page(HEADER_PAGE_NUMBER, (page_t*)&headerPage);
     return freePageNum;
 }
 
 // Free an on-disk page to the free page list
-void file_free_page(pagenum_t pagenum){ }
+void file_free_page(pagenum_t pagenum){ 
+    FreePage freePage;
+    freePage.nextFreePageNumber = headerPage.freePageNumber;
+    file_write_page(pagenum, (page_t*)&freePage);
+
+    headerPage.freePageNumber = pagenum;
+    file_write_page(HEADER_PAGE_NUMBER, (page_t*)&headerPage);
+}
 
 // Read an on-disk page into the in-memory page structure(dest)
 void file_read_page(pagenum_t pagenum, page_t* dest){ 

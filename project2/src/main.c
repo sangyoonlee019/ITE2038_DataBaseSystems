@@ -28,16 +28,25 @@ int main( int argc, char ** argv ) {
 
     // open_table("sample_10000.db");
     open_table("test.db");
-    // for (int i=9999;i>=0;i--){
-    //     char some[120] = "abcdefge";
-    //     db_insert(i,some);
-        
-    // }
-    int imin=10000;
-    char some[120] = "abcdefge";
     for (int i=9999;i>=0;i--){
-        
+        char some[120] = "abcdefge";
         db_insert(i,some);
+        
+    }
+    
+    for (int i=0;i<1983;i++){
+        char some[120] = "abcdefge";
+        db_delete(i);
+        
+    }
+    printTree();
+    db_delete(1983);
+    printTree();
+    // int imin=10000;
+    // char some[120] = "abcdefge";
+    // for (int i=9999;i>=0;i--){
+        
+        // db_insert(i,some);
         // printf("%d:\n",i);
         // InternalPage n;
         // file_read_page(252,(page_t*)&n);
@@ -48,9 +57,9 @@ int main( int argc, char ** argv ) {
         // }
         
         // printPage(252);
-    }
+    // }
     // printf("%d!\n",imin);
-    printTree(); 
+    // printTree(); 
     // printPage(3);
     // printPage(252);
     // printPage(379);
@@ -83,7 +92,6 @@ int main( int argc, char ** argv ) {
     //             printf("found: %s\n",foundValue);
     //         }
     //         // printf("%d\n",retval);
-            
     //     }else if(strncmp(DELETE,instruction,7)==0){
     //         int key;
     //         key = atoi(instruction + 7);
@@ -91,6 +99,7 @@ int main( int argc, char ** argv ) {
     //         if (db_delete(key)<0){
     //             printf("error: delete failed!\n");
     //         }
+    //         printTree();
     //     }else{
     //         // usage_2();
     //     }

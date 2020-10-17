@@ -22,6 +22,8 @@
 #define PAGE_SIZE 4096
 #define PAGE_HEADER_SIZE 128
 
+#define HEADER_PAGE_NUMBER 0
+
 typedef uint64_t pagenum_t; 
 struct page_t {
     char pageSize[PAGE_SIZE];

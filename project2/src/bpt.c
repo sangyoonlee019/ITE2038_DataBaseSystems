@@ -508,10 +508,358 @@ void insertIntoInternalAfterSplitting(InternalPage* parentNode, pagenum_t parent
 }
 
 int db_delete (int64_t key){
-    printf("%lld - key is deleted!\n",key);
+    node * key_leaf;
+    record * key_record;
+    LeafPage leafNode;
+    pagenum_t leafPageNum; 
+
+    char valueFound[120];
+    leafPageNum = findLeaf(key, &leafNode);
+    if (db_find(key, valueFound) == -1) {
+        return -1;
+    }
+    deleteEntry((NodePage*)&leafNode, leafPageNum, key);
     return 0;
 }
 
+void deleteEntry(NodePage* node, pagenum_t nodePageNum, int64_t key){
+    // Remove key and pointer from node.
+
+    removeEntryFromNode(node, nodePageNum, key);
+
+    /* Case:  deletion from the root. 
+     */
+
+    if (nodePageNum == headerPage.rootPageNumber){ 
+        adjustRoot(node, nodePageNum);
+        return;
+    }
+
+
+    /* Case:  deletion from a node below the root.
+     * (Rest of function body.)
+     */
+
+    /* Determine minimum allowable size of node,
+     * to be preserved after deletion.
+     */
+
+    // min_keys = n->is_leaf ? cut(order - 1) : cut(order) - 1;
+
+    /* Case:  node stays at or above minimum.
+     * (The simple case.)
+     */
+
+    if (node->numberOfKeys > 0)
+        return;
+
+    /* Case:  node falls below minimum.
+     * Either coalescence or redistribution
+     * is needed.
+     */
+
+    /* Find the appropriate neighbor node with which
+     * to coalesce.
+     * Also find the key (k_prime) in the parent
+     * between the pointer to node n and the pointer
+     * to the neighbor.
+     */
+
+    InternalPage parentNode;
+    file_read_page(node->parentPageNumber, (page_t*)&parentNode);
+
+    NodePage neighborNode;
+    pagenum_t neighborPageNum;
+    int neighborIndex; 
+    neighborIndex = getNeighborIndex(node, nodePageNum, &parentNode);
+
+    int64_t primeKey; 
+    int primeKeyIndex;
+    if (neighborIndex==RIGHT_NEIGHBOR){
+        primeKeyIndex = 0;
+        primeKey = parentNode.recordIDs[primeKeyIndex].key;
+        neighborPageNum = pageNumOf(&parentNode,1);
+        
+        file_read_page(neighborPageNum, (page_t*)&neighborNode);
+    }else{
+        primeKeyIndex = neighborIndex;
+        primeKey = parentNode.recordIDs[primeKeyIndex].key;
+        neighborPageNum = pageNumOf(&parentNode,neighborIndex);
+
+        file_read_page(neighborPageNum, (page_t*)&neighborNode);
+    }
+
+    if(node->isLeaf){
+        
+        coalesceNodes(node, nodePageNum, &neighborNode, neighborPageNum, &parentNode, neighborIndex, primeKey);
+    }else{
+        
+        if (neighborNode.numberOfKeys < internalOrder -1){
+            coalesceNodes(node, nodePageNum, &neighborNode, neighborPageNum, &parentNode, neighborIndex, primeKey);
+        }else{
+            redistributeNodes(node, nodePageNum, &neighborNode, neighborPageNum, &parentNode, neighborIndex, primeKeyIndex, primeKey);
+        }
+    }
+}
+
+void removeEntryFromNode(NodePage* node, pagenum_t nodePageNum, int64_t key){
+    
+    int i, num_pointers;
+
+    if (node->isLeaf){
+        LeafPage* leafNode = (LeafPage*)node; 
+        // Remove the key&value and shift other keys&values accordingly.
+        i = 0;
+        while (leafNode->records[i].key != key)
+            i++;
+        for (++i; i < leafNode->numberOfKeys; i++){
+            leafNode->records[i-1].key = leafNode->records[i].key;
+            memcpy(leafNode->records[i-1].value,leafNode->records[i].value,VALUE_SIZE);
+        }
+
+        // One key fewer.
+        leafNode->numberOfKeys--;
+    }else{
+        InternalPage* internalNode = (InternalPage*)node; 
+        // Remove the key&value and shift other keys&values accordingly.
+        i = 0;
+        while (internalNode->recordIDs[i].key != key)
+            i++;
+        for (++i; i < internalNode->numberOfKeys; i++){
+            internalNode->recordIDs[i-1].key = internalNode->recordIDs[i].key;
+            setPageNum(internalNode,i-1,pageNumOf(internalNode,i));
+        }
+        setPageNum(internalNode,i-1,pageNumOf(internalNode,i));
+
+        // One key fewer.
+        internalNode->numberOfKeys--;
+    }
+    file_write_page(nodePageNum, (page_t*)node);
+}
+
+void adjustRoot(NodePage* rootNode, pagenum_t rootPageNum){
+    node * new_root;
+
+    /* Case: nonempty root.
+     * Key and pointer have already been deleted,
+     * so nothing to be done.
+     */
+
+    if (rootNode->numberOfKeys > 0)
+        return;
+
+    /* Case: empty root. 
+     */
+
+    // If it is a leaf (has no children),
+    // then the whole tree is empty.
+
+    if(rootNode->isLeaf){
+        headerPage.rootPageNumber = 0;
+    }
+    
+    // If it has a child, promote 
+    // the first (only) child
+    // as the new root.
+
+    else{
+        InternalPage* internalRootNode = (InternalPage*)rootNode; 
+        headerPage.rootPageNumber = pageNumOf(internalRootNode, 0);
+    }
+
+    file_write_page(HEADER_PAGE_NUMBER, (page_t*)&headerPage);
+
+    file_free_page(rootPageNum); 
+}
+
+int getNeighborIndex(NodePage* node, pagenum_t nodePageNum, InternalPage* parentNode){
+    int i;
+    /* Return the index of the key to the left
+     * of the pointer in the parent pointing
+     * to n.  
+     * If n is the leftmost child, this means
+     * return -1.
+     */
+    for (i = 0; i <= parentNode->numberOfKeys; i++)
+        if (pageNumOf(parentNode, i) == nodePageNum)
+            return i - 1;
+
+    // Error state.
+    printf("Search for nonexistent pointer to node in parent.\n");
+    exit(EXIT_FAILURE);
+}
+
+void coalesceNodes(NodePage* node, pagenum_t nodePageNum, NodePage* neighborNode, 
+        pagenum_t neighborPageNum, InternalPage* parentNode, int neighborIndex, int64_t primeKey){
+    
+    int i, j, neighbor_insertion_index, n_end;
+
+    /* Swap neighbor with node if node is on the
+     * extreme left and neighbor is to its right.
+     */
+
+    if (neighborIndex == RIGHT_NEIGHBOR) {
+        NodePage* tempNode;
+        tempNode = node;
+        node = neighborNode;
+        neighborNode = tempNode;
+    }
+
+    /* Starting point in the neighbor for copying
+     * keys and pointers from n.
+     * Recall that n and neighbor have swapped places
+     * in the special case of n being a leftmost child.
+     */
+
+    int neighborInsertionIndex = neighborNode->numberOfKeys;
+
+    /* In a leaf, append the keys and pointers of
+     * n to the neighbor.
+     * Set the neighbor's last pointer to point to
+     * what had been n's right neighbor.
+     */
+
+    if (node->isLeaf){
+        LeafPage* leafNode = (LeafPage*)node;
+        LeafPage* leafNeighborNode = (LeafPage*)neighborNode;
+
+        for (i = neighborInsertionIndex, j = 0; j < leafNode->numberOfKeys; i++, j++) {
+            leafNeighborNode->records[i].key = leafNode->records[i].key;
+            memcpy(leafNeighborNode->records[i].value, leafNode->records[i].value, VALUE_SIZE);
+            leafNeighborNode->numberOfKeys++;    
+        }
+        leafNeighborNode->rightSiblingPageNumber = leafNode->rightSiblingPageNumber;
+    }
+
+    /* Case:  nonleaf node.
+     * Append k_prime and the following pointer.
+     * Append all pointers and keys from the neighbor.
+     */
+
+    else{
+        InternalPage* internalNode = (InternalPage*)node;
+        InternalPage* internalNeighborNode = (InternalPage*)neighborNode;
+
+        /* Append primeKey.
+         */
+
+        internalNeighborNode->recordIDs[neighborInsertionIndex].key = primeKey;
+        setPageNum(internalNeighborNode, neighborInsertionIndex+1, pageNumOf(internalNode, 0));
+        internalNeighborNode->numberOfKeys++;
+
+        /* All children must now point up to the same parent.
+         */
+
+        NodePage childNode;
+        for (i = 0; i < internalNeighborNode->numberOfKeys+1; i++) {
+            file_read_page(pageNumOf(internalNeighborNode,i),(page_t*)&childNode);
+            childNode.parentPageNumber = neighborPageNum;
+            file_write_page(pageNumOf(internalNeighborNode,i),(page_t*)&childNode);
+        }
+    }
+
+    file_write_page(neighborPageNum, (page_t*)neighborNode);
+    deleteEntry((NodePage*)parentNode, node->parentPageNumber, primeKey);
+    file_free_page(nodePageNum);
+}
+
+void redistributeNodes(NodePage* node, pagenum_t nodePageNum, NodePage* neighborNode, 
+        pagenum_t neighborPageNum, InternalPage* parentNode, int neighborIndex, int primeKeyIndex, int64_t primeKey){
+    
+    int i;
+
+    /* Case: n is the leftmost child.
+     * Take a key-pointer pair from the neighbor to the right.
+     * Move the neighbor's leftmost key-pointer pair
+     * to n's rightmost position.
+     */
+
+    if(neighborIndex==RIGHT_NEIGHBOR) {  
+        if (node->isLeaf){
+            LeafPage* leafNode = (LeafPage*)node;
+            LeafPage* leafRightNode = (LeafPage*)neighborNode;
+            
+            leafNode->records[0].key = leafRightNode->records[0].key;
+            memcpy(leafNode->records[0].value, leafRightNode->records[0].value, VALUE_SIZE);
+            leafNode->numberOfKeys++;
+            
+            for (i = 0; i < leafRightNode->numberOfKeys - 1; i++) {
+                leafRightNode->records[i].key = leafRightNode->records[i + 1].key;
+                memcpy(leafRightNode->records[i].value, leafRightNode->records[i + 1].value, VALUE_SIZE); 
+            }
+            leafRightNode->numberOfKeys--;
+        }else{
+            InternalPage* internalNode = (InternalPage*)node;
+            InternalPage* internalRightNode = (InternalPage*)neighborNode;
+            
+            // Move rightNegibor's first pageNum to node's 1st pageNum.
+            // Add parent's primeKey(the key between node and neighbor) to node
+            setPageNum(internalNode, 1, pageNumOf(internalRightNode, 0));
+            internalNode->recordIDs[0].key = primeKey;
+            internalNode->numberOfKeys++;
+            
+            // Chanege parent's primeKey to rightNeighbor's first key
+            parentNode->recordIDs[primeKeyIndex] = internalRightNode->recordIDs[0];
+
+            // Shift rightNeighbor's RecordIDs and delete neighbor's last key;
+            for (i = 0; i < internalRightNode->numberOfKeys - 1; i++) {
+                setPageNum(internalRightNode, i , pageNumOf(internalRightNode, i + 1));
+                internalRightNode->recordIDs[i].key = internalRightNode->recordIDs[i + 1].key;
+            }
+            setPageNum(internalRightNode, i , pageNumOf(internalRightNode, i + 1));
+            internalRightNode->numberOfKeys--;
+
+            // Update child's parentPageNumber from rightNeighborPageNum to nodePageNum  
+            NodePage childNode;
+            file_read_page(pageNumOf(internalNode, 1), (page_t*)&childNode);
+            childNode.parentPageNumber = nodePageNum;
+            file_write_page(pageNumOf(internalNode, 1), (page_t*)&childNode);
+        }
+    }
+
+    /* Case: n has a neighbor to the left. 
+     * Pull the neighbor's last key-pointer pair over
+     * from the neighbor's right end to n's left end.
+     */
+
+    else {
+        if (node->isLeaf){
+            LeafPage* leafNode = (LeafPage*)node;
+            LeafPage* leafLeftNode = (LeafPage*)neighborNode;
+            
+            leafNode->records[0].key = leafLeftNode->records[leafLeftNode->numberOfKeys - 1].key;
+            memcpy(leafNode->records[0].value, leafLeftNode->records[leafLeftNode->numberOfKeys - 1].value, VALUE_SIZE);
+            leafNode->numberOfKeys++;
+            
+            leafLeftNode->numberOfKeys--;
+        }else{
+            InternalPage* internalNode = (InternalPage*)node;
+            InternalPage* internalLeftNode = (InternalPage*)neighborNode;
+            
+            // Shift existing pageNum from 0 to 1 and Move leftNegibor's last pageNum to node's first pageNum.
+            // Add parent's primeKey(the key between neighbor and node) to node
+            setPageNum(internalNode, 1, pageNumOf(internalNode, 0));
+            setPageNum(internalNode, 0, pageNumOf(internalLeftNode, internalLeftNode->numberOfKeys));
+            internalNode->recordIDs[0].key = primeKey;
+            internalNode->numberOfKeys++;
+            
+            // Chanege parent's primeKey to leftNeighbor's last key
+            parentNode->recordIDs[primeKeyIndex] = internalLeftNode->recordIDs[internalLeftNode->numberOfKeys-1];
+
+            // Delete neighbor's last key;
+            internalLeftNode->numberOfKeys--;
+
+            // Update child's parentPageNumber to node from leftNeighborNode 
+            NodePage childNode;
+            file_read_page(pageNumOf(internalNode, 0), (page_t*)&childNode);
+            childNode.parentPageNumber = nodePageNum;
+            file_write_page(pageNumOf(internalNode, 0), (page_t*)&childNode);
+        }
+    }
+
+    file_write_page(nodePageNum, (page_t*)node);
+    file_write_page(neighborPageNum, (page_t*)neighborNode);
+}
 
 void printTree(void){
     int i;
@@ -1669,7 +2017,7 @@ node * redistribute_nodes(node * root, node * n, node * neighbor, int neighbor_i
 
     return root;
 }
-
+ 
 
 /* Deletes an entry from the B+ tree.
  * Removes the record and its key and pointer

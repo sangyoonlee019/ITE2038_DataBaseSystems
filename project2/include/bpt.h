@@ -24,9 +24,10 @@
 // order arbitrarily.  You may change the maximum order.
 #define MIN_ORDER 3
 #define MAX_ORDER 20
-#define HEADER_PAGE_NUMBER 0
 
 #define MAX_NODE_NUMBER 10000000
+
+#define RIGHT_NEIGHBOR -1
 
 // Constants for printing part or all of the GPL license.
 #define LICENSE_FILE "LICENSE.txt"
@@ -138,9 +139,11 @@ int db_delete (int64_t key);
 
 
 // New find functuin
+char* findValue(int64_t key);
 pagenum_t findLeaf(int64_t key, LeafPage* leafNode);
 
 // New insert function
+void insertRecord(int64_t key);
 void startNewTree(int64_t key, char* value);
 void insertIntoLeaf(LeafPage* leafNode, pagenum_t leafPageNum, int64_t key, char* value);
 void insertIntoLeafAfterSplitting(LeafPage* leafNode, pagenum_t leafPageNum, int64_t key, char* value);
@@ -155,6 +158,16 @@ void printTree(void);
 int pathToRoot(NodePage* node);
 void printPage(pagenum_t pageNum);
 void printNode(NodePage* node, pagenum_t nodePageNum);
+
+// New delete function
+void deleteEntry(NodePage* node, pagenum_t pageNum, int64_t key);
+void removeEntryFromNode(NodePage* node, pagenum_t pageNum, int64_t key);
+void adjustRoot(NodePage* rootNode, pagenum_t rootPageNum);
+int getNeighborIndex(NodePage* node, pagenum_t pageNum, InternalPage* parentNode);
+void coalesceNodes(NodePage* node, pagenum_t nodePageNum, NodePage* neighborNode, 
+        pagenum_t neighborPageNum, InternalPage* parentNode, int neighborIndex, int64_t primeKey);
+void redistributeNodes(NodePage* node, pagenum_t nodePageNum, NodePage* neighborNode, 
+        pagenum_t neighborPageNum, InternalPage* parentNode, int neighborIndex, int primeKeyIndex, int64_t primeKey);
 
 // Output and utility.
 
