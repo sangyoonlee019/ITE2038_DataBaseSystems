@@ -28,13 +28,28 @@ int main( int argc, char ** argv ) {
 
     // open_table("sample_10000.db");
     open_table("test.db");
-    for (int i=9999;i>=0;i--){
+    for (int i=1;i<=40;i+=2){
         char some[120] = "abcdefge";
         db_insert(i,some);
         
+        
     }
+    char some[120] = "abcdefge";
+    db_insert(22,some);
+    db_insert(24,some);
+    db_insert(18,some);
+    db_insert(20,some);
+    for (int i=39;i>=30;i--){
+      db_delete(i);
+      printTree();
+    }
+    db_delete(25);
     printTree();
-    // for (int i=2000;i<3000;i++){
+    // printTree();
+    db_delete(27);
+    printTree();
+    // printTree(); 
+    // for (int i=10;i>=9;i--){
     //     db_delete(i);
 
     // }
@@ -83,46 +98,51 @@ int main( int argc, char ** argv ) {
     // printPage(252);
     // printPage(379);
     // printPage(505);
-
-    // while(getInstruction(instruction, sizeof(instruction)) >= 0){
-    //     if(strncmp(OPEN,instruction,5)==0){
-    //         char* path;
-    //         path = instruction + 5;
-    //         if (open_table(path)<=0){
-    //             printf("error: open table failed!\n");
-    //         }
-    //     }else if(strncmp(INSERT,instruction,6)==0){
-    //         int key;
-    //         char* remainder,value;
-    //         remainder = instruction + 6;
-    //         key = atoi(strtok(remainder," "));
-    //         if ((remainder = strtok(NULL," "))==NULL || db_insert(key,remainder)<0){
-    //             printf("error: insert failed!\n"); 
-    //         }
-    //         printTree();
-    //     }else if(strncmp(FIND,instruction,5)==0){
-    //         int key;
-    //         char foundValue[120];
-    //         key = atoi(instruction + 5);
-    //         int retval;
-    //         if ((retval=db_find(key,foundValue))<0){
-    //             printf("error %d: find failed!\n",retval);
-    //         }else{
-    //             printf("found: %s\n",foundValue);
-    //         }
-    //         // printf("%d\n",retval);
-    //     }else if(strncmp(DELETE,instruction,7)==0){
-    //         int key;
-    //         key = atoi(instruction + 7);
-    //         printf("delete inst!\n");
-    //         if (db_delete(key)<0){
-    //             printf("error: delete failed!\n");
-    //         }
-    //         printTree();
-    //     }else{
-    //         // usage_2();
-    //     }
-    // }
+    printf("%lu %lu %lu %lu %lu %lu %lu\n",sizeof(page_t),sizeof(HeaderPage),sizeof(LeafPage),sizeof(InternalPage),sizeof(FreePage),sizeof(NodePage),sizeof(record));
+    while(getInstruction(instruction, sizeof(instruction)) >= 0){
+        if(strncmp(OPEN,instruction,5)==0){
+            char* path;
+            path = instruction + 5;
+            if (open_table(path)<=0){
+                printf("error: open table failed!\n");
+            }
+        }else if(strncmp(INSERT,instruction,6)==0){
+            int key;
+            char* remainder,value;
+            remainder = instruction + 6;
+            key = atoi(strtok(remainder," "));
+            if ((remainder = strtok(NULL," "))==NULL || db_insert(key,remainder)<0){
+                printf("error: insert failed!\n"); 
+            }
+            // printPage(0);
+            // printPage(1);
+            // printPage(2);
+            printTree();
+        }else if(strncmp(FIND,instruction,5)==0){
+            int key;
+            char foundValue[120];
+            key = atoi(instruction + 5);
+            int retval;
+            if ((retval=db_find(key,foundValue))<0){
+                printf("error %d: find failed!\n",retval);
+            }else{
+                printf("found: %s\n",foundValue);
+            }
+            // printPage(0);
+            // printPage(1);
+            // printf("%d\n",retval);
+        }else if(strncmp(DELETE,instruction,7)==0){
+            int key;
+            key = atoi(instruction + 7);
+            printf("delete inst!\n");
+            if (db_delete(key)<0){
+                printf("error: delete failed!\n");
+            }
+            printTree();
+        }else{
+            // usage_2();
+        }
+    }
     close_table();
     return EXIT_SUCCESS;
 }

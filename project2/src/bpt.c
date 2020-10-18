@@ -68,8 +68,8 @@
  * default value.
  */
 int order = DEFAULT_LEAF_ORDER;
-int leafOrder = DEFAULT_LEAF_ORDER;
-int internalOrder = DEFAULT_INTERNAL_ORDER;
+int leafOrder = 4;//DEFAULT_LEAF_ORDER;
+int internalOrder = 4;//DEFAULT_INTERNAL_ORDER;
 int tableID = DEFAULT_TABLE_ID;
 int dataFile;
 HeaderPage headerPage;
@@ -135,11 +135,12 @@ int db_find (int64_t key, char * ret_val){
     if (!file_table_is_open()){
         return -1;
     }
-    
+    // printf("\n@1\n");
     LeafPage leafNode;
     if(findLeaf(key,&leafNode)==0){
         return -2;
     }
+    // printf("\n@2\n");
     // BS
     for (int i=0;i<leafNode.numberOfKeys;i++){
         if (leafNode.records[i].key == key){
@@ -151,6 +152,7 @@ int db_find (int64_t key, char * ret_val){
 }
 
 pagenum_t findLeaf(int64_t key, LeafPage* retLeafNode){
+    // printf("@3\n");
     pagenum_t rootPageNum = headerPage.rootPageNumber; 
     if (rootPageNum == 0) {
         return 0;
@@ -158,6 +160,7 @@ pagenum_t findLeaf(int64_t key, LeafPage* retLeafNode){
     pagenum_t nextPageNum = rootPageNum; 
     InternalPage node;
     file_read_page(rootPageNum, (page_t*)&node);
+    // printf("@4\n");
     while (!node.isLeaf) {
         // BS
         int i = 0;
@@ -168,7 +171,10 @@ pagenum_t findLeaf(int64_t key, LeafPage* retLeafNode){
         nextPageNum = pageNumOf(&node,i);
         file_read_page(nextPageNum, (page_t*)&node);
     }
-    memcpy(retLeafNode, &node, sizeof(LeafPage));
+    // printf("@5\n");
+    memcpy(retLeafNode, &node, PAGE_SIZE);
+    // printf("@6\n");
+    // printf("foundPage: %llu %lu\n",nextPageNum,sizeof(LeafPage));
     return nextPageNum;
 }
 
@@ -273,16 +279,15 @@ void insertIntoLeafAfterSplitting(LeafPage* leafNode, pagenum_t leafPageNum, int
         
         // Insert to newLeafNode
         for (i = split, j = 0; i<leafOrder-1;i++, j++){
-            if(i!=insertionIndex){
-                newLeafNode.records[j].key = leafNode->records[i].key;
-                memcpy(newLeafNode.records[j].value, leafNode->records[i].value, VALUE_SIZE); 
-                newLeafNode.numberOfKeys++;
+            if (i==insertionIndex){
+                 j++;
+            }             
+            newLeafNode.records[j].key = leafNode->records[i].key;
+            memcpy(newLeafNode.records[j].value, leafNode->records[i].value, VALUE_SIZE); 
+            newLeafNode.numberOfKeys++;
 
-                // Delete moved records in oldLeafNode
-                leafNode->records[i].key = 0;
-                memset(leafNode->records[i].value, 0, VALUE_SIZE);
-                leafNode->numberOfKeys--; 
-            }
+            // Delete moved records in oldLeafNode
+            leafNode->numberOfKeys--;      
         }
 
         // Insert new record
@@ -300,8 +305,6 @@ void insertIntoLeafAfterSplitting(LeafPage* leafNode, pagenum_t leafPageNum, int
             newLeafNode.numberOfKeys++;
 
             // Delete moved records in oldLeafNode
-            leafNode->records[i].key = 0;
-            memset(leafNode->records[i].value, 0, VALUE_SIZE);
             leafNode->numberOfKeys--;
             // printf("!%d\n",j);
         }
@@ -524,7 +527,7 @@ int db_delete (int64_t key){
 
 void deleteEntry(NodePage* node, pagenum_t nodePageNum, int64_t key){
     // Remove key and pointer from node.
-    if (key==9984) printPage(252);
+    // if (key==9984) printPage(252);
     removeEntryFromNode(node, nodePageNum, key);
     /* Case:  deletion from the root. 
      */
@@ -722,7 +725,7 @@ void coalesceNodes(NodePage* node, pagenum_t nodePageNum, NodePage* neighborNode
      */
 
     if (node->isLeaf){
-        // printf("\n Leafmerge (%llu %llu) delete primeKey: %lld\n",neighborPageNum,nodePageNum,primeKey);
+        printf("\n Leafmerge (%llu %llu) delete primeKey: %lld\n",neighborPageNum,nodePageNum,primeKey);
         LeafPage* leafNode = (LeafPage*)node;
         LeafPage* leafNeighborNode = (LeafPage*)neighborNode;
 
@@ -749,7 +752,6 @@ void coalesceNodes(NodePage* node, pagenum_t nodePageNum, NodePage* neighborNode
          */
 
         internalNeighborNode->recordIDs[neighborInsertionIndex].key = primeKey;
-        // setPageNum(internalNeighborNode, neighborInsertionIndex+1, pageNumOf(internalNode, 0));
         internalNeighborNode->numberOfKeys++;
         // printf("#neighborNodeKeys:\n");
         for (i = neighborInsertionIndex + 1, j = 0; j < internalNode->numberOfKeys; i++, j++) {
@@ -769,7 +771,7 @@ void coalesceNodes(NodePage* node, pagenum_t nodePageNum, NodePage* neighborNode
             childNode.parentPageNumber = neighborPageNum;
             file_write_page(pageNumOf(internalNeighborNode,i),(page_t*)&childNode);
         }
-        // printf("\n Internalmerge (%llu %llu) delete primeKey: %lld\n",neighborPageNum,nodePageNum,primeKey);
+        printf("\n Internalmerge (%llu %llu) delete primeKey: %lld\n",neighborPageNum,nodePageNum,primeKey);
         
         // printTree();
     }
@@ -777,6 +779,7 @@ void coalesceNodes(NodePage* node, pagenum_t nodePageNum, NodePage* neighborNode
     file_write_page(neighborPageNum, (page_t*)neighborNode);
     // if (neighborPageNum ==3) printPage(3);
     // printPage(1);
+    // printTree();
     deleteEntry((NodePage*)parentNode, node->parentPageNumber, primeKey);
     file_free_page(nodePageNum);
 }
@@ -791,7 +794,7 @@ void redistributeInternalNodes(InternalPage* internalNode, pagenum_t internalPag
      * Move the neighbor's leftmost key-pointer pair
      * to n's rightmost position.
      */
-    printPage(3);
+    // printPage(3);
     if(neighborIndex==RIGHT_NEIGHBOR) {  
         InternalPage* internalRightNode = neighborNode;
         
@@ -802,7 +805,7 @@ void redistributeInternalNodes(InternalPage* internalNode, pagenum_t internalPag
         internalNode->numberOfKeys++;
         
         // Chanege parent's primeKey to rightNeighbor's first key
-        parentNode->recordIDs[primeKeyIndex] = internalRightNode->recordIDs[0];
+        parentNode->recordIDs[primeKeyIndex].key = internalRightNode->recordIDs[0].key;
 
         // Shift rightNeighbor's RecordIDs and delete neighbor's last key;
         for (i = 0; i < internalRightNode->numberOfKeys - 1; i++) {
@@ -825,6 +828,9 @@ void redistributeInternalNodes(InternalPage* internalNode, pagenum_t internalPag
      */
 
     else {
+        // printPage(8);
+        // printPage(11);
+        // printPage(14);
         InternalPage* internalLeftNode = neighborNode;
         
         // Shift existing pageNum from 0 to 1 and Move leftNegibor's last pageNum to node's first pageNum.
@@ -835,7 +841,7 @@ void redistributeInternalNodes(InternalPage* internalNode, pagenum_t internalPag
         internalNode->numberOfKeys++;
         
         // Chanege parent's primeKey to leftNeighbor's last key
-        parentNode->recordIDs[primeKeyIndex] = internalLeftNode->recordIDs[internalLeftNode->numberOfKeys-1];
+        parentNode->recordIDs[primeKeyIndex].key = internalLeftNode->recordIDs[internalLeftNode->numberOfKeys-1].key;
 
         // Delete neighbor's last key;
         internalLeftNode->numberOfKeys--;
@@ -846,9 +852,13 @@ void redistributeInternalNodes(InternalPage* internalNode, pagenum_t internalPag
         childNode.parentPageNumber = internalPageNum;
         file_write_page(pageNumOf(internalNode, 0), (page_t*)&childNode);
     }
-    printPage(3);
+    // printPage(3);
     file_write_page(internalPageNum, (page_t*)internalNode);
     file_write_page(neighborPageNum, (page_t*)neighborNode);
+    file_write_page(internalNode->parentPageNumber, (page_t*)parentNode);
+    // printPage(8);
+    // printPage(11);
+    // printPage(14);
 }
 
 void printTree(void){
@@ -927,6 +937,15 @@ void printPage(pagenum_t pageNum){
     int i;
     file_read_page(pageNum, (page_t*)&node);
     
+    if (pageNum == HEADER_PAGE_NUMBER){
+        HeaderPage* page = (HeaderPage*)&node;
+        printf("HeaderPage %llu:\n",pageNum);
+        printf("#freePage - %llu\n",page->freePageNumber);
+        printf("#rootPage - %llu\n",page->rootPageNumber);
+        printf("#pages %llu:\n",page->numberOfPage);
+        return;
+    }
+
     if (node.isLeaf){
         printf("LeafPage %llu:\n",pageNum);
         printf("#parentPage - %llu\n",node.parentPageNumber);
