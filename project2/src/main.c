@@ -1,3 +1,5 @@
+#include "db.h"
+#include "file.h"
 #include "bpt.h"
 
 #define OPEN "open "
@@ -16,89 +18,12 @@ int getInstruction(char *buf, int nbuf) {
 // MAIN
 int main( int argc, char ** argv ) {
 
-    char * input_file;
-    FILE * fp;
-    node * root;
     int input, range2;
     char instruction[6+2+20+120];
     char license_part;
 
-    root = NULL;
-    verbose_output = false;
 
     // open_table("sample_10000.db");
-    open_table("test.db");
-    for (int i=1;i<=40;i+=2){
-        char some[120] = "abcdefge";
-        db_insert(i,some);
-        
-        
-    }
-    char some[120] = "abcdefge";
-    db_insert(22,some);
-    db_insert(24,some);
-    db_insert(18,some);
-    db_insert(20,some);
-    for (int i=39;i>=30;i--){
-      db_delete(i);
-      printTree();
-    }
-    db_delete(25);
-    printTree();
-    // printTree();
-    db_delete(27);
-    printTree();
-    // printTree(); 
-    // for (int i=10;i>=9;i--){
-    //     db_delete(i);
-
-    // }
-    // printTree();
-    // }
-    // for (int i=0; i<5000;i++){
-    //   db_delete(i);
-    // }
-
-    // for (int i=2007;i<5003;i++){
-    //   db_delete(i);
-    // }
-    // printPage(4);
-    // printPage(3);
-    // printPage(631);
-    // printTree();
-    // printPage(1);
-    // db_delete(1983);
-    // printPage(3);
-    // printPage(631);
-    // printPage(630);
-    // db_delete(9984);
-    // printPage(4);
-    // printPage(252);
-    // printPage(2);
-    // printTree();
-    // int imin=10000;
-    // char some[120] = "abcdefge";
-    // for (int i=9999;i>=0;i--){
-        
-        // db_insert(i,some);
-        // printf("%d:\n",i);
-        // InternalPage n;
-        // file_read_page(252,(page_t*)&n);
-        
-        // if(n.numberOfKeys==0 && i>=5000){
-            
-        //     if(imin>i) imin = i;
-        // }
-        
-        // printPage(252);
-    // }
-    // printf("%d!\n",imin);
-    // printTree(); 
-    // printPage(3);
-    // printPage(252);
-    // printPage(379);
-    // printPage(505);
-    printf("%lu %lu %lu %lu %lu %lu %lu\n",sizeof(page_t),sizeof(HeaderPage),sizeof(LeafPage),sizeof(InternalPage),sizeof(FreePage),sizeof(NodePage),sizeof(record));
     while(getInstruction(instruction, sizeof(instruction)) >= 0){
         if(strncmp(OPEN,instruction,5)==0){
             char* path;
@@ -114,9 +39,6 @@ int main( int argc, char ** argv ) {
             if ((remainder = strtok(NULL," "))==NULL || db_insert(key,remainder)<0){
                 printf("error: insert failed!\n"); 
             }
-            // printPage(0);
-            // printPage(1);
-            // printPage(2);
             printTree();
         }else if(strncmp(FIND,instruction,5)==0){
             int key;
@@ -128,9 +50,6 @@ int main( int argc, char ** argv ) {
             }else{
                 printf("found: %s\n",foundValue);
             }
-            // printPage(0);
-            // printPage(1);
-            // printf("%d\n",retval);
         }else if(strncmp(DELETE,instruction,7)==0){
             int key;
             key = atoi(instruction + 7);

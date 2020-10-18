@@ -16,6 +16,7 @@ STATIC_LIB:=$(LIBS)libbpt.a
 
 # Include more files if you write another source file.
 SRCS_FOR_LIB:= \
+	$(SRCDIR)db.c \
 	$(SRCDIR)bpt.c \
 	$(SRCDIR)file.c
 
