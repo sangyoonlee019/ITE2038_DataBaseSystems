@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <stdint.h>
 
 #define OPEN_EXIST 0
 #define OPEN_NEW 1
@@ -24,6 +25,7 @@
 
 #define HEADER_PAGE_NUMBER 0
 
+typedef int tableid;
 typedef uint64_t pagenum_t; 
 struct page_t {
     char pageSize[PAGE_SIZE];
@@ -107,8 +109,8 @@ pagenum_t file_alloc_page();
 // Free an on-disk page to the free page list
 void file_free_page(pagenum_t pagenum);
 // Read an on-disk page into the in-memory page structure(dest)
-void file_read_page(pagenum_t pagenum, page_t* dest);
+void file_read_page(tableid tableID, pagenum_t pagenum, page_t* dest);
 // Write an in-memory page(src) to the on-disk page
-void file_write_page(pagenum_t pagenum, const page_t* src);
+void file_write_page(tableid tableID, pagenum_t pagenum, const page_t* src);
 
 #endif /* __FILE_H__*/

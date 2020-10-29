@@ -3,6 +3,10 @@
 #include "file.h"
 
 
+int init_db(int buf_num){
+    return initDB(buf_num);
+}
+
 int open_table(char* pathname){
     return openTable(pathname);
 }

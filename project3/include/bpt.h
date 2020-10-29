@@ -9,6 +9,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include "buf.h"
 #include "file.h"
 
 #ifdef WINDOWS
@@ -81,7 +82,9 @@ void insertIntoInternal(InternalPage* parentNode, pagenum_t parentPageNum, int l
 void insertIntoInternalAfterSplitting(InternalPage* parentNode, pagenum_t parentPageNum, int leftIndex, int64_t key, pagenum_t rightPageNum);
 
 // New untility function
+int initDB(int bufferNum);
 int openTable(char* pathname);
+int openTable2(char* pathname);
 int closeTable(void);
 void printTree(void);
 int pathToRoot(NodePage* node);

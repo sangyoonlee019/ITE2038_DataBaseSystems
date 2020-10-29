@@ -1,6 +1,8 @@
 #include "db.h"
-#include "file.h"
 #include "bpt.h"
+#include "buf.h"
+#include "file.h"
+
 
 #define OPEN "open "
 #define INSERT "insert "
@@ -22,6 +24,7 @@ int main( int argc, char ** argv ) {
     char instruction[6+2+20+120];
     char license_part;
 
+    printf("@LRUList: %lu BCB: %lu Buffer: %lu\n",sizeof(LRUList),sizeof(BufferControlBlock),sizeof(Buffer));
 
     // open_table("sample_10000.db");
     while(getInstruction(instruction, sizeof(instruction)) >= 0){

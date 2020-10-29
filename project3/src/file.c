@@ -59,21 +59,22 @@ int file_close_table(){
 }
 
 // Allocate an on-disk page from the free page list
-pagenum_t file_alloc_page(){
-    pagenum_t freePageNum;
-    if (headerPage.freePageNumber==0){
-        freePageNum = headerPage.numberOfPage;
-        headerPage.numberOfPage++;
-        return freePageNum;
-    }
+// pagenum_t file_alloc_page(){
+//     pagenum_t freePageNum;
+//     if (headerPage.freePageNumber==0){
+//         freePageNum = headerPage.numberOfPage;
+//         headerPage.numberOfPage++;
+//         file_write_page(HEADER_PAGE_NUMBER, (page_t*)&headerPage);
+//         return freePageNum;
+//     }
 
-    FreePage freePage;
-    freePageNum = headerPage.freePageNumber;
-    file_read_page(freePageNum,(page_t*)&freePage);
-    headerPage.freePageNumber = freePage.nextFreePageNumber;
-    file_write_page(HEADER_PAGE_NUMBER, (page_t*)&headerPage);
-    return freePageNum;
-}
+//     FreePage freePage;
+//     freePageNum = headerPage.freePageNumber;
+//     file_read_page(freePageNum,(page_t*)&freePage);
+//     headerPage.freePageNumber = freePage.nextFreePageNumber;
+//     file_write_page(HEADER_PAGE_NUMBER, (page_t*)&headerPage);
+//     return freePageNum;
+// }
 
 // Free an on-disk page to the free page list
 void file_free_page(pagenum_t pagenum){ 
@@ -86,14 +87,14 @@ void file_free_page(pagenum_t pagenum){
 }
 
 // Read an on-disk page into the in-memory page structure(dest)
-void file_read_page(pagenum_t pagenum, page_t* dest){ 
+void file_read_page(tableid dataFile, pagenum_t pagenum, page_t* dest){ 
     lseek(dataFile, PAGE_SIZE*pagenum, SEEK_SET);
     read(dataFile, dest, PAGE_SIZE);
     // page 구조체에 fileoffset을 저장해야할수도
 }
 
 // Write an in-memory page(src) to the on-disk page
-void file_write_page(pagenum_t pagenum, const page_t* src){ 
+void file_write_page(tableid dataFile, pagenum_t pagenum, const page_t* src){ 
     lseek(dataFile, PAGE_SIZE*pagenum, SEEK_SET);
     write(dataFile, src, PAGE_SIZE);
 }

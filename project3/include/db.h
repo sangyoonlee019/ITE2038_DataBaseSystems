@@ -3,6 +3,7 @@
 
 #include<inttypes.h>
 
+int init_db(int buf_num);
 int open_table(char* pathname);
 int close_table(void);
 int db_insert (int64_t key, char * value);

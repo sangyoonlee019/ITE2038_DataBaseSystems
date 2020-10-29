@@ -8,6 +8,7 @@
 
 #include "bpt.h"
 #include "file.h"
+#include "buf.h"
 
 // GLOBALS.
 
@@ -24,8 +25,8 @@
 int leafOrder = DEFAULT_LEAF_ORDER;
 int internalOrder = DEFAULT_INTERNAL_ORDER;
 int tableID = DEFAULT_TABLE_ID;
-int dataFile;
-HeaderPage headerPage;
+// int dataFile;
+// HeaderPage headerPage;
 
 /* The queue is used to print the tree in
  * level order, starting from the root
@@ -37,6 +38,10 @@ pagenum_t queue[MAX_NODE_NUMBER];
 // FUNCTION DEFINITIONS.
 
 // OUTPUT AND UTILITIES
+
+int initDB(int bufferNum){
+    return buf_initialize(bufferNum);
+}
 
 /* Open table from path's datafile.
  */
@@ -53,6 +58,26 @@ int openTable( char* pathname ){
     }else{
         file_read_page(HEADER_PAGE_NUMBER,(page_t*)&headerPage);
     
+    }
+    tableID++;
+    return tableID;
+}
+
+/* Open table from path's datafile.
+ */
+int openTable2( char* pathname ){
+    if (file_open_table(pathname,OPEN_EXIST)==-1){
+        if (file_open_table(pathname,OPEN_NEW)==-1){
+            printf("error: creating the new datafile\n");
+            return -1;
+        }
+        headerPage.freePageNumber = 0;
+        headerPage.rootPageNumber = 0;
+        headerPage.numberOfPage = 1;
+        buf_set_page(tableID,HEADER_PAGE_NUMBER,(page_t*)&headerPage));
+    }else{
+        // file_read_page(HEADER_PAGE_NUMBER,(page_t*)&headerPage);
+        buf_get_page(tableID,HEADER_PAGE_NUMBER,(page_t*)&headerPage);
     }
     tableID++;
     return tableID;
