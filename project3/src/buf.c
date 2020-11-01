@@ -56,8 +56,9 @@ int buf_terminate(){
         int dataFile = tableList[i];
         if (dataFile!=-1){
             printf("!%d\n",dataFile);
-            printf("closing tid%d...\n",i);
-            buf_close_table(i);
+            // printf("closing tid%d...\n",i);
+            if (buf_close_table(i)<0)
+                return -1;
         }
     }
     return 0;
