@@ -24,6 +24,24 @@ int main( int argc, char ** argv ) {
 
 
     // open_table("sample_10000.db");
+    open_table("test.db");
+    // for (int i=0;i<12;i++){
+    //     char a[120] = "aasdf";
+    //     insert(i,a);
+    //     printTree();
+    // }
+    char p[120] = "a";
+    for (int i=1;i<=100;i++){
+        insert(i,p);
+    }
+    printTree();
+
+    for (int i=100;i>=63;i--){
+        delete(i);
+        printTree();
+    }
+    printPage(42);
+
     while(getInstruction(instruction, sizeof(instruction)) >= 0){
         if(strncmp(OPEN,instruction,5)==0){
             char* path;

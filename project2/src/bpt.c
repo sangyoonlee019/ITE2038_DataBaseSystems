@@ -21,8 +21,8 @@
  * This global variable is initialized to the
  * default value.
  */
-int leafOrder = DEFAULT_LEAF_ORDER;
-int internalOrder = DEFAULT_INTERNAL_ORDER;
+int leafOrder = 4;//DEFAULT_LEAF_ORDER;
+int internalOrder = 4;//DEFAULT_INTERNAL_ORDER;
 int tableID = DEFAULT_TABLE_ID;
 int dataFile;
 HeaderPage headerPage;
@@ -578,6 +578,7 @@ void deleteEntry(NodePage* node, pagenum_t nodePageNum, int64_t key){
         if (neighborNode.numberOfKeys < internalOrder -1){
             coalesceNodes(node, nodePageNum, &neighborNode, neighborPageNum, &parentNode, neighborIndex, primeKey);
         }else{
+            printf("-------redistribute!\n");
             redistributeInternalNodes((InternalPage*)node, nodePageNum, (InternalPage*)&neighborNode, neighborPageNum, &parentNode, neighborIndex, primeKeyIndex, primeKey);
         }
     }

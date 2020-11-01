@@ -18,8 +18,6 @@
 #define true 1
 #endif
 
-#define DEFAULT_TABLE_ID 0
-
 // #########################수정해야함 min max
 // Minimum order is necessarily 3.  We set the maximum
 // order arbitrarily.  You may change the maximum order.
@@ -53,9 +51,9 @@
  */
 extern int leafOrder;
 extern int indexOrder;
-extern int tableID;
-extern int dataFile;
-extern HeaderPage headerPage;
+extern int tableNum;
+// extern int dataFile;
+// extern HeaderPage headerPage;
 
 /* The queue is used to print the tree in
  * level order, starting from the root
@@ -67,28 +65,28 @@ extern pagenum_t queue[MAX_NODE_NUMBER];
 // FUNCTION PROTOTYPES.
 
 // New find functuin
-int find(int64_t key, char* returnValue);
-pagenum_t findLeaf(int64_t key, LeafPage* leafNode);
+int find(int tableID, int64_t key, char* returnValue);
+pagenum_t findLeaf(int tableID, int64_t key, LeafPage* leafNode);
 
 // New insert function
-int insert(int64_t key, char* value);
-void startNewTree(int64_t key, char* value);
-void insertIntoLeaf(LeafPage* leafNode, pagenum_t leafPageNum, int64_t key, char* value);
-void insertIntoLeafAfterSplitting(LeafPage* leafNode, pagenum_t leafPageNum, int64_t key, char* value);
-void insertIntoParent(NodePage* leftNode, pagenum_t leftPageNum, int64_t key, NodePage* rightNode, pagenum_t rightPageNum);
-void insertIntoNewRoot(NodePage* leftNode, pagenum_t leftPageNum, int64_t key, NodePage* rightNode, pagenum_t rightPageNum);
+int insert(int tableID, int64_t key, char* value);
+void startNewTree(int tableID, int64_t key, char* value);
+void insertIntoLeaf(int tableID, LeafPage* leafNode, pagenum_t leafPageNum, int64_t key, char* value);
+void insertIntoLeafAfterSplitting(int tableID, LeafPage* leafNode, pagenum_t leafPageNum, int64_t key, char* value);
+void insertIntoParent(int tableID, NodePage* leftNode, pagenum_t leftPageNum, int64_t key, NodePage* rightNode, pagenum_t rightPageNum);
+void insertIntoNewRoot(int tableID, NodePage* leftNode, pagenum_t leftPageNum, int64_t key, NodePage* rightNode, pagenum_t rightPageNum);
 int getLeftIndex(InternalPage* parentNode, pagenum_t leftPageNum);
-void insertIntoInternal(InternalPage* parentNode, pagenum_t parentPageNum, int leftIndex, int64_t key, pagenum_t rightPageNum);
-void insertIntoInternalAfterSplitting(InternalPage* parentNode, pagenum_t parentPageNum, int leftIndex, int64_t key, pagenum_t rightPageNum);
+void insertIntoInternal(int tableID, InternalPage* parentNode, pagenum_t parentPageNum, int leftIndex, int64_t key, pagenum_t rightPageNum);
+void insertIntoInternalAfterSplitting(int tableID, InternalPage* parentNode, pagenum_t parentPageNum, int leftIndex, int64_t key, pagenum_t rightPageNum);
 
 // New untility function
 int initDB(int bufferNum);
 int openTable(char* pathname);
-int openTable2(char* pathname);
-int closeTable(void);
-void printTree(void);
-int pathToRoot(NodePage* node);
-void printPage(pagenum_t pageNum);
+int closeTable(int tableID);
+int shutdownDB(void);
+void printTree(int tableID);
+int pathToRoot(int tableID, NodePage* node);
+void printPage(int tableID, pagenum_t pageNum);
 void printNode(NodePage* node, pagenum_t nodePageNum);
 void usage_1( void );
 void usage_2( void );
@@ -96,14 +94,14 @@ void usage_3( void );
 int cut( int length );
 
 // New delete function
-int delete(int64_t key);
-void deleteEntry(NodePage* node, pagenum_t pageNum, int64_t key);
-void removeEntryFromNode(NodePage* node, pagenum_t pageNum, int64_t key);
-void adjustRoot(NodePage* rootNode, pagenum_t rootPageNum);
+int delete(int tableID, int64_t key);
+void deleteEntry(int tableID, NodePage* node, pagenum_t pageNum, int64_t key);
+void removeEntryFromNode(int tableID, NodePage* node, pagenum_t pageNum, int64_t key);
+void adjustRoot(int tableID, NodePage* rootNode, pagenum_t rootPageNum);
 int getNeighborIndex(NodePage* node, pagenum_t pageNum, InternalPage* parentNode);
-void coalesceNodes(NodePage* node, pagenum_t nodePageNum, NodePage* neighborNode, 
+void coalesceNodes(int tableID, NodePage* node, pagenum_t nodePageNum, NodePage* neighborNode, 
         pagenum_t neighborPageNum, InternalPage* parentNode, int neighborIndex, int64_t primeKey);
-void redistributeInternalNodes(InternalPage* internalNode, pagenum_t internalPageNum, InternalPage* neighborNode, 
+void redistributeInternalNodes(int tableID, InternalPage* internalNode, pagenum_t internalPageNum, InternalPage* neighborNode, 
         pagenum_t neighborPageNum, InternalPage* parentNode, int neighborIndex, int primeKeyIndex, int64_t primeKey);
 
 
