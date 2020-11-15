@@ -25,8 +25,21 @@ int main( int argc, char ** argv ) {
     char instruction[6+2+20+120];
     char license_part;
 
+    init_db(5);
+    int tid1 = open_table("test1.db");
+    int i;
+    char tmp[120] = "sadf";
+    for (i=0;i<=958;i++){
+        insert(tid1, i, tmp);
+    }
+    printTree(tid1);
+    printBufferArray();
+    printLRUList();
+    insert(tid1, i, tmp);
+    printTree(tid1);
+    printBufferArray();
+    printLRUList();
     
-    init_db(20);
     while(getInstruction(instruction, sizeof(instruction)) >= 0){
         if(strncmp(OPEN,instruction,5)==0){
             char* path;

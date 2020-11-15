@@ -43,13 +43,6 @@ int file_open_table(char* pathname, int mode){
     return dataFile;
 }
 
-// int file_table_is_open(){
-//     if (dataFile==-1){
-//         return false;
-//     }
-//     return true;
-// }
-
 // Close datafile
 int file_close_table(int dataFile){
     if (close(dataFile)==-1){
