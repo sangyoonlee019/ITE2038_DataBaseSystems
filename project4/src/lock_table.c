@@ -71,7 +71,6 @@ lock_release(lock_t* lock_obj)
 	}else{
 		node->head = lock_obj->next;
 		lock_obj->next->prev = NULL;
-		pthread_cond_t cond = lock_obj->next->cond;
 		free(lock_obj);
 		pthread_cond_signal(&(lock_obj->next->cond));
 	}
