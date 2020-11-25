@@ -48,19 +48,19 @@ int buf_initialize(int num_buf){
 // Terminate buffer
 int buf_terminate(){
     for (int i=1;i<=MAX_TABLE_NUM;i++){
-        free(history[i]);
-    }
-    free(bufferArray);
-
-    for (int i=1;i<=MAX_TABLE_NUM;i++){
         int dataFile = tableList[i];
-        if (dataFile!=-1){
-            printf("!%d\n",dataFile);
+        if (dataFile!=UNUSED){
+            // printf("!%d\n",dataFile);
             // printf("closing tid%d...\n",i);
             if (buf_close_table(i)<0)
                 return -1;
         }
     }
+
+    for (int i=1;i<=MAX_TABLE_NUM;i++){
+        free(history[i]);
+    }
+    free(bufferArray);
     return 0;
 }
 

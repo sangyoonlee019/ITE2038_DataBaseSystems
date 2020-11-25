@@ -29,11 +29,11 @@ int file_open_table(char* pathname, int mode){
     int dataFile;
     switch (mode){
     case OPEN_EXIST:
-        dataFile = open(pathname, O_RDWR|O_DIRECT|O_SYNC, 0644);
+        dataFile = open(pathname, O_RDWR|O_SYNC, 0644);
         if (dataFile==-1) return -1;
         break;
     case OPEN_NEW:
-        dataFile = open(pathname, O_RDWR|O_CREAT|O_DIRECT|O_SYNC, 0644);
+        dataFile = open(pathname, O_RDWR|O_CREAT|O_SYNC, 0644);
         if (dataFile==-1) return -1;
         break;
     default:
