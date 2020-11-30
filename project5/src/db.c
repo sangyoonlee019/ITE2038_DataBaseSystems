@@ -43,7 +43,3 @@ int trx_begin(void){
 int trx_commit(int trx_id){
     return lock_trx_commit(trx_id);
 }
-
-void check_lock(void){
-    printf("lock: %d trx: %d buf: %d\n",lock_check_lock(),trx_check_lock(),buf_check_lock());
-}

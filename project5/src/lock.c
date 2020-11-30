@@ -70,7 +70,7 @@ lock_trx_commit(int trxID){
 }
 
 int trx_abort(int trxID){
-	if (debug) printf("trx%d abort called!\n",trxID);
+	if (debug1) printf("trx%d abort called!\n",trxID);
 	// pthread_mutex_lock(&trx_table_latch);
 	Trx* trx = trx_find(trxID);
 	
@@ -293,7 +293,7 @@ lock_acquire(int table_id, int64_t key, int trx_id, int lock_mode)
 
 		Trx* trx = trx_find(trx_id);
 		if (trx==NULL){
-			printf("~~~~~~~~~~~~~~\n");
+			printf("error: trx_find\n");
 			pthread_mutex_unlock(&trx_table_latch);
 			pthread_mutex_unlock(&lock_table_latch);
 			return NULL;
@@ -338,9 +338,8 @@ lock_acquire(int table_id, int64_t key, int trx_id, int lock_mode)
 							pthread_mutex_unlock(&lock_table_latch);
 							return clock;
 						}else{
-							pthread_mutex_unlock(&trx_table_latch);
-							pthread_mutex_unlock(&lock_table_latch);
-							return NULL;
+							conflict = 1;
+							break;
 						}
 					}else{
 						pthread_mutex_unlock(&trx_table_latch);
@@ -377,7 +376,7 @@ lock_acquire(int table_id, int64_t key, int trx_id, int lock_mode)
 
 					Trx* trx = trx_find(trx_id);
 					if (trx==NULL){
-						printf("~~~~~~~~~~~~~~\n");
+						printf("error: trx_find\n");;
 						pthread_mutex_unlock(&trx_table_latch);
 						pthread_mutex_unlock(&lock_table_latch);
 						return NULL;
@@ -413,15 +412,15 @@ lock_acquire(int table_id, int64_t key, int trx_id, int lock_mode)
 	}	
 	
 	pthread_mutex_unlock(&lock_table_latch);
-	if (debug) printf("lock_acquire end (lock: %d trx: %d)\n",lock_check_lock(),trx_check_lock());
+	if (debug1) printf("lock_acquire end (lock: %d trx: %d)\n",lock_check_lock(),trx_check_lock());
 	return lock;
 }
 
 int
 lock_release(lock_t* lock_obj)
 {	
-	if(debug && lock_obj->lock_mode==LM_SHARED) printf("lock_release: S%lld (lock: %d trx: %d)\n",lock_obj->sentinal->recordID,lock_check_lock(),trx_check_lock());
-	if(debug && lock_obj->lock_mode==LM_EXCLUSIVE) printf("lock_release: X%lld\n",lock_obj->sentinal->recordID);
+	if(debug1 && lock_obj->lock_mode==LM_SHARED) printf("lock_release: S%lld (lock: %d trx: %d)\n",lock_obj->sentinal->recordID,lock_check_lock(),trx_check_lock());
+	if(debug1 && lock_obj->lock_mode==LM_EXCLUSIVE) printf("lock_release: X%lld\n",lock_obj->sentinal->recordID);
 	pthread_mutex_lock(&lock_table_latch);
 	Node* node  = lock_obj->sentinal;
 	lock_t* headLock = (lock_t*)node->head;
@@ -462,14 +461,11 @@ lock_release(lock_t* lock_obj)
 		node->acqiredCount--;
 
 	}
-
-	int tid = lock_obj->owner_trx_id;
-	
 	free(lock_obj);
 	
 	pthread_mutex_unlock(&lock_table_latch);
 	
-	if (debug) printf("lock_release end (lock: %d trx: %d)\n",lock_check_lock(),trx_check_lock());
+	if (debug1) printf("lock_release end (lock: %d trx: %d)\n",lock_check_lock(),trx_check_lock());
 	return 0;
 }
 
