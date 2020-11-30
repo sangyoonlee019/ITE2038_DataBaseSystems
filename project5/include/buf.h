@@ -3,6 +3,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
 #include "file.h"
 
 #define BUFFER_SIZE PAGE_SIZE + 3
@@ -28,7 +29,7 @@ struct BufferControlBlock {
     int tableID;
     pagenum_t pageNumber;
     int32_t isDirty;
-    int32_t isPinned;
+    pthread_mutex_t page_latch;
     int32_t isUsed;
     struct BufferControlBlock* next;
     struct BufferControlBlock* prev;
@@ -78,6 +79,8 @@ void buf_set_page(tableid tableID, pagenum_t pagenum, const page_t* src);
 void buf_unpin_page(tableid tableID, pagenum_t pagenum);
 
 int buf_find_page(tableid tableID, pagenum_t pagenum);
+
+int buf_check_lock(void);
 
 void printBufferArray(void);
 void printLRUList(void);

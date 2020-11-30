@@ -1,6 +1,7 @@
 #include "db.h"
 #include "bpt.h"
 #include "buf.h"
+#include "lock.h"
 #include "file.h"
 
 
@@ -9,6 +10,7 @@
 #define INSERT "insert "
 #define DELETE "delete "
 #define FIND "find "
+#define UPDATE "update "
 
 int getInstruction(char *buf, int nbuf) {
   printf("> ");
@@ -26,21 +28,26 @@ int main( int argc, char ** argv ) {
     char license_part;
 
     init_db(5);
-    int tid1 = open_table("test1.db");
-    int i;
-    char tmp[120] = "sadf";
-    for (i=0;i<=958;i++){
-        insert(tid1, i, tmp);
-    }
-    printTree(tid1);
-    printBufferArray();
-    printLRUList();
-    insert(tid1, i, tmp);
-    printTree(tid1);
-    printBufferArray();
-    printLRUList();
+    int tid1 = open_table("sample_10000.db");
+    // int i;
+    // char tmp[120] = "sadf";
+    // for (i=0;i<=958;i++){
+    //     insert(tid1, i, tmp);
+    // }
+    // printTree(tid1);
+    // printBufferArray();
+    // printLRUList();
+    // insert(tid1, i, tmp);
+    printf("@!!!\n");
+    printTreeValue(tid1);
+    printf("!!!!\n");
+    
+    // printBufferArray();
+    // printLRUList();
     
     while(getInstruction(instruction, sizeof(instruction)) >= 0){
+        int trx_id = trx_begin();
+        // int trx_id =1;
         if(strncmp(OPEN,instruction,5)==0){
             char* path;
             path = instruction + 5;
@@ -76,11 +83,28 @@ int main( int argc, char ** argv ) {
             tid = atoi(strtok(remainder," "));
             key = atoi(strtok(NULL," "));
             int retval;
-            if ((retval=db_find(tid,key,foundValue))<0){
+            printf("trx %d try find key: %d\n",trx_id,key);
+            if ((retval=db_find(tid,key,foundValue,trx_id))<0){
+                printf("trx %d's find is aborted at key: %d ==================================================\n\n",trx_id,tid);
                 printf("error %d: find failed!\n",retval);
             }else{
                 printf("found: %s\n",foundValue);
+                printf("trx %d find success key: %d \n\n",trx_id,tid);
             }
+        }else if(strncmp(UPDATE,instruction,6)==0){
+            int tid, key;
+            char* remainder,value;
+            remainder = instruction + 6;
+            tid = atoi(strtok(remainder," "));
+            key = atoi(strtok(NULL," "));
+            printf("trx %d try update key: %d\n",trx_id,tid);
+            if ((remainder = strtok(NULL," "))==NULL || db_update(tid,key,remainder,trx_id)<0){
+                printf("trx %d's update is aborted at key: %d ==================================================\n\n",trx_id,tid);
+                printf("error: insert failed!\n"); 
+            }
+            printf("trx %d update success key: %d \n\n",trx_id,tid);
+            printTreeValue(tid);
+            // printBufferArray();
         }else if(strncmp(DELETE,instruction,7)==0){
             int tid, key;
             char* remainder;
@@ -95,6 +119,10 @@ int main( int argc, char ** argv ) {
         }else{
             // usage_2();
         }
+        printf("trx before commit\n");
+        trx_commit(trx_id);
+        printf("trx after commit\n");
+        check_lock();
     }
     shutdown_db();
     return EXIT_SUCCESS;

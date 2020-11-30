@@ -10,8 +10,8 @@ LIBS=lib/
 # OBJS:=$(SRCS:.c=.o)
 
 # main source file
-TARGET_SRC:=$(SRCDIR)main.c
-TARGET_OBJ:=$(SRCDIR)main.o
+TARGET_SRC:=$(SRCDIR)test2.c
+TARGET_OBJ:=$(SRCDIR)test2.o
 STATIC_LIB:=$(LIBS)libbpt.a
 
 # Include more files if you write another source file.
@@ -19,6 +19,7 @@ SRCS_FOR_LIB:= \
 	$(SRCDIR)db.c \
 	$(SRCDIR)bpt.c \
 	$(SRCDIR)buf.c \
+	$(SRCDIR)lock.c \
 	$(SRCDIR)file.c
 
 OBJS_FOR_LIB:=$(SRCS_FOR_LIB:.c=.o)
@@ -30,10 +31,10 @@ TARGET=main
 all: $(TARGET)
 
 $(TARGET): $(TARGET_OBJ) $(STATIC_LIB)
-	$(CC) $(CFLAGS) $< -o $@ -L $(LIBS) -lbpt
+	$(CC) $(CFLAGS) $< -o $@ -L $(LIBS) -lbpt -pthread
 
 %.o: %.c
-	$(CC) $(CFLAGS) $^ -c -o $@
+	$(CC) $(CFLAGS) $^ -c -o $@ 
 
 clean:
 	rm $(TARGET) $(TARGET_OBJ) $(OBJS_FOR_LIB) $(LIBS)*

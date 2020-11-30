@@ -1,5 +1,6 @@
 #include "db.h"
 #include "bpt.h"
+#include "lock.h"
 #include "file.h"
 
 
@@ -15,8 +16,12 @@ int db_insert(int table_id, int64_t key, char* value){
     return insert(table_id, key,value);
 }
 
-int db_find(int table_id, int64_t key, char* ret_val){
-    return find(table_id, key, ret_val);
+int db_find(int table_id, int64_t key, char* ret_val, int trx_id){
+    return find_new(table_id, key, ret_val, trx_id);
+}
+
+int db_update (int table_id, int64_t key, char* values, int trx_id){
+    return update(table_id, key, values, trx_id);
 }
 
 int db_delete (int table_id, int64_t key){
@@ -29,4 +34,16 @@ int close_table(int table_id){
 
 int shutdown_db(){
     return shutdownDB();    
+}
+
+int trx_begin(void){
+    return lock_trx_begin();
+}
+
+int trx_commit(int trx_id){
+    return lock_trx_commit(trx_id);
+}
+
+void check_lock(void){
+    printf("lock: %d trx: %d buf: %d\n",lock_check_lock(),trx_check_lock(),buf_check_lock());
 }

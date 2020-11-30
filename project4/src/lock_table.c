@@ -38,12 +38,13 @@ lock_acquire(int table_id, int64_t key)
 		lock->prev=NULL;
 		lock->next=NULL;
 		lock->sentinal=node;
-		pthread_cond_init(&lock->cond,NULL);
-
+		
 		if(node->head==NULL){
 			node->tail = lock;
 			node->head = lock;
 		}else{
+			pthread_cond_init(&lock->cond,NULL);
+			
 			lock_t* lastLock = (lock_t*)node->tail;
 			lastLock->next = lock;
 			lock->prev = lastLock;
@@ -60,21 +61,21 @@ lock_acquire(int table_id, int64_t key)
 int
 lock_release(lock_t* lock_obj)
 {	
-	pthread_mutex_lock(&lock_table_latch);
-	
+	int r = pthread_mutex_lock(&lock_table_latch);
+	printf("lock: %d",r);
 	Node* node  = lock_obj->sentinal;
 	lock_t* lastLock = (lock_t*)node->tail;
 	if (lastLock==lock_obj){
 		node->head = NULL;
 		node->tail = NULL;
-		free(lock_obj);
 	}else{
 		node->head = lock_obj->next;
 		lock_obj->next->prev = NULL;
-		free(lock_obj);
 		pthread_cond_signal(&(lock_obj->next->cond));
 	}
-	pthread_mutex_unlock(&lock_table_latch);
+	free(lock_obj);
+	r = pthread_mutex_unlock(&lock_table_latch);
+	printf("unlock: %d",r);
 	return 0;
 }
 

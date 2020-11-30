@@ -2,9 +2,11 @@
 #include "file.h"
 #include "buf.h"
 #include "lock.h"
+#include "unistd.h"
 
 int currentTableID = DEFAULT_TABLE_ID;
 int numberOfBuffer = DEFAULT_BUFFER_NUMBER;
+pthread_mutex_t buffer_manager_latch = PTHREAD_MUTEX_INITIALIZER;
 int debug = 0;
 int bufferUse;
 int tableList[MAX_TABLE_NUM+1];
@@ -12,6 +14,15 @@ char* history[MAX_TABLE_NUM+1];
 
 Buffer* bufferArray;
 BufferControlBlock LRUList;
+
+int buf_check_lock(){
+    if (pthread_mutex_trylock(&buffer_manager_latch)!=0){
+		return 1;
+	}else{
+		pthread_mutex_unlock(&buffer_manager_latch);
+		return 0;
+	}
+}
 
 int buf_table_is_open(int tableID){
     if (tableList[tableID]==-1){
@@ -30,6 +41,7 @@ int buf_initialize(int num_buf){
         bufferArray[i].controlBlock.isUsed = false;
         bufferArray[i].controlBlock.next = NULL;
         bufferArray[i].controlBlock.prev = NULL;
+        pthread_mutex_init(&(bufferArray[i].controlBlock.page_latch),NULL);
     }
 
     HEAD(LRUList) = &LRUList;
@@ -42,7 +54,6 @@ int buf_initialize(int num_buf){
         tableList[i] = UNUSED;
         history[i] = (char*)malloc(MAX_PATHNAME_LENGHT+1);
     }
-
     return 0;
 }
 
@@ -91,7 +102,6 @@ int buf_open_table(char* pathname, int mode){
         memcpy(history[tableID],pathname,MAX_PATHNAME_LENGHT);
     }
     tableList[tableID] = fd;
-    
     return tableID;
 }
 
@@ -120,6 +130,7 @@ pagenum_t buf_alloc_page(tableid tableID){
     buf_get_page(tableID, HEADER_PAGE_NUMBER, (page_t*)&headerPage);
     
     if (headerPage.freePageNumber==0){
+        // pthread_mutex_lock(&buffer_manager_latch);
         freePageNum = headerPage.numberOfPage;
         int newBufferIdx = buf_alloc_buffer();
         Buffer* newBuffer = &bufferArray[newBufferIdx]; 
@@ -127,8 +138,8 @@ pagenum_t buf_alloc_page(tableid tableID){
         newBuffer->controlBlock.pageNumber=freePageNum;
         newBuffer->controlBlock.isDirty=true;
         newBuffer->controlBlock.isUsed=true;        
-        newBuffer->controlBlock.isPinned=true;
-
+        pthread_mutex_trylock(&(newBuffer->controlBlock.page_latch));
+        
         newBuffer->controlBlock.next = HEAD(LRUList);
         newBuffer->controlBlock.prev = &LRUList;
         HEAD(LRUList)->prev = &newBuffer->controlBlock;
@@ -137,6 +148,7 @@ pagenum_t buf_alloc_page(tableid tableID){
         headerPage.numberOfPage++;
         buf_set_page(tableID, HEADER_PAGE_NUMBER, (page_t*)&headerPage);
         if (debug) printf("--------alloc page%llu-%d\n",freePageNum,tableID);
+        // pthread_mutex_unlock(&buffer_manager_latch);
         return freePageNum;
     }
 
@@ -146,6 +158,7 @@ pagenum_t buf_alloc_page(tableid tableID){
     headerPage.freePageNumber = freePage.nextFreePageNumber;
     buf_set_page(tableID, HEADER_PAGE_NUMBER, (page_t*)&headerPage);
     if (debug) printf("--------alloc page%llu-%d\n",freePageNum,tableID);
+    pthread_mutex_unlock(&buffer_manager_latch);
     return freePageNum;
 }
 
@@ -165,10 +178,16 @@ void buf_free_page(tableid tableID, pagenum_t pagenum){
 int buf_eviction(){
     BufferControlBlock* victim;
     victim = TAIL(LRUList);
-    while(victim->isPinned){
-        victim = victim->prev;
-    }    
 
+    int result = pthread_mutex_trylock(&(victim->page_latch));
+    if (result==0) pthread_mutex_unlock(&(victim->page_latch));
+
+    while(result!=0){
+        victim = victim->prev;
+        result = pthread_mutex_trylock(&(victim->page_latch));
+        if (result==0) pthread_mutex_unlock(&(victim->page_latch));
+    }    
+    
     victim->prev->next = victim->next;
     victim->next->prev = victim->prev;
 
@@ -182,6 +201,7 @@ int buf_eviction(){
         file_write_page(dataFile, victim->pageNumber, &bufferArray[victimIdx].frame);
     }
 
+    // printf("\nE3\n");
     return victimIdx;
 }
 
@@ -206,6 +226,8 @@ int buf_alloc_buffer(){
 
 // Get needed page from bufferArray
 void buf_get_page(tableid tableID, pagenum_t pageNum, page_t* dest){
+    
+    pthread_mutex_lock(&buffer_manager_latch);
     if (debug) printf("----------get page%llu-%d\n",pageNum,tableID);
     int dataFile;
 
@@ -215,7 +237,9 @@ void buf_get_page(tableid tableID, pagenum_t pageNum, page_t* dest){
     getBufferIdx = buf_find_page(tableID, pageNum);
     if (getBufferIdx!=-1){
         Buffer* buffer = &bufferArray[getBufferIdx];
-        buffer->controlBlock.isPinned = true;
+
+        pthread_mutex_lock(&(buffer->controlBlock.page_latch));
+
         memcpy(dest, &(buffer->frame), PAGE_SIZE);
 
         buffer->controlBlock.next->prev = buffer->controlBlock.prev;
@@ -225,7 +249,9 @@ void buf_get_page(tableid tableID, pagenum_t pageNum, page_t* dest){
         buffer->controlBlock.prev = &LRUList;
         
         HEAD(LRUList)->prev = &buffer->controlBlock;
-        HEAD(LRUList) = &buffer->controlBlock;            
+        HEAD(LRUList) = &buffer->controlBlock;
+        
+        pthread_mutex_unlock(&buffer_manager_latch);
         return;  
     }
     
@@ -243,12 +269,17 @@ void buf_get_page(tableid tableID, pagenum_t pageNum, page_t* dest){
     newBuffer->controlBlock.pageNumber = pageNum;
     newBuffer->controlBlock.isDirty=false;
     newBuffer->controlBlock.isUsed=true;
-    newBuffer->controlBlock.isPinned=true;
+    
+    pthread_mutex_lock(&newBuffer->controlBlock.page_latch);
 
     newBuffer->controlBlock.next = HEAD(LRUList);
     newBuffer->controlBlock.prev = &LRUList;
     HEAD(LRUList)->prev = &(newBuffer->controlBlock);
     HEAD(LRUList) = &(newBuffer->controlBlock);
+    
+    pthread_mutex_unlock(&buffer_manager_latch);
+    
+    return;
 }
 
 int buf_find_page(tableid tableID, pagenum_t pageNum){
@@ -262,10 +293,11 @@ int buf_find_page(tableid tableID, pagenum_t pageNum){
 
 // Set page to bufferArray 
 void buf_set_page(tableid tableID, pagenum_t pageNum, const page_t* src){
+
     if (debug) printf("----------set page%llu-%d\n",pageNum,tableID);
     int setBufferIdx;
     setBufferIdx = buf_find_page(tableID,pageNum);
-    if (setBufferIdx==numberOfBuffer){
+    if (setBufferIdx==-1){
         printf("error: setting buffer!\n");
         return;
     }
@@ -273,35 +305,32 @@ void buf_set_page(tableid tableID, pagenum_t pageNum, const page_t* src){
     Buffer* setBuffer = &bufferArray[setBufferIdx];
     memcpy(&(setBuffer->frame), src, PAGE_SIZE);
     setBuffer->controlBlock.isDirty = true;
-    setBuffer->controlBlock.isPinned = false;
+    pthread_mutex_unlock(&(setBuffer->controlBlock.page_latch));
 }
 
 void buf_unpin_page(tableid tableID, pagenum_t pageNum){
     if (debug) printf("--------unpin page%llu-%d\n",pageNum,tableID);
-    int setBufferIdx;
-    for (int i=0;i<numberOfBuffer;i++){
-        if (bufferArray[i].controlBlock.tableID==tableID && pageNum==bufferArray[i].controlBlock.pageNumber){
-            setBufferIdx = i;
-            break;      
-        }
-    } 
+    int setBufferIdx = buf_find_page(tableID, pageNum);
 
-    if (setBufferIdx==numberOfBuffer){
+    if (setBufferIdx==-1){
         printf("error: unpin mismatch!!\n");
     }else{
-        bufferArray[setBufferIdx].controlBlock.isPinned = false;
+        int r = pthread_mutex_unlock(&(bufferArray[setBufferIdx].controlBlock.page_latch));
     }
-    
 }
 
 void printBufferArray(){
     for (int i=0;i<numberOfBuffer;i++){
         Buffer * buffer = &bufferArray[i];
         if (buffer->controlBlock.isUsed){
-            if (buffer->controlBlock.isPinned)
+            int result = pthread_mutex_trylock(&(buffer->controlBlock.page_latch));
+
+            if (result!=0){
                 printf("#%llu.%d | ",buffer->controlBlock.pageNumber,buffer->controlBlock.tableID);
-            else
+            }else{
+                pthread_mutex_unlock(&(buffer->controlBlock.page_latch));
                 printf("%llu.%d | ",buffer->controlBlock.pageNumber,buffer->controlBlock.tableID);
+            }
         }else{
             printf("    | ");
         }

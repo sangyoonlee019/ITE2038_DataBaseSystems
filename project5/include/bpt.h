@@ -64,8 +64,12 @@ extern pagenum_t queue[MAX_NODE_NUMBER];
 
 // FUNCTION PROTOTYPES.
 
+// New update function
+int update(int tableID, int64_t key, char* value, int trxID);
+
 // New find functuin
 int find(int tableID, int64_t key, char* returnValue);
+int find_new(int tableID, int64_t key, char* returnValue, int trxID);
 pagenum_t findLeaf(int tableID, int64_t key, LeafPage* leafNode);
 
 // New insert function
@@ -85,6 +89,7 @@ int openTable(char* pathname);
 int closeTable(int tableID);
 int shutdownDB(void);
 void printTree(int tableID);
+void printTreeValue(int tableID);
 int pathToRoot(int tableID, NodePage* node);
 void printPage(int tableID, pagenum_t pageNum);
 void printNode(NodePage* node, pagenum_t nodePageNum);

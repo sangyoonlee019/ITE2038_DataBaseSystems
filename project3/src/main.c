@@ -26,19 +26,19 @@ int main( int argc, char ** argv ) {
     char license_part;
 
     init_db(5);
-    int tid1 = open_table("test1.db");
-    int i;
-    char tmp[120] = "sadf";
-    for (i=0;i<=958;i++){
-        insert(tid1, i, tmp);
-    }
+    int tid1 = open_table("sample_10000.db");
+    // int i;
+    // char tmp[120] = "sadf";
+    // for (i=0;i<=958;i++){
+    //     insert(tid1, i, tmp);
+    // }
     printTree(tid1);
-    printBufferArray();
-    printLRUList();
-    insert(tid1, i, tmp);
-    printTree(tid1);
-    printBufferArray();
-    printLRUList();
+    // printBufferArray();
+    // printLRUList();
+    // insert(tid1, i, tmp);
+    // printTree(tid1);
+    // printBufferArray();
+    // printLRUList();
     
     while(getInstruction(instruction, sizeof(instruction)) >= 0){
         if(strncmp(OPEN,instruction,5)==0){

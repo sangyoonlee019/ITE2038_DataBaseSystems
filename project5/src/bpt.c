@@ -69,6 +69,105 @@ int closeTable(int tableID){
 int shutdownDB(void){
     return buf_terminate();
 }
+
+int update(int tableID, int64_t key, char* value, int trxID){
+    // lock을 aqquire해주고 수행해야함
+    // Find the matching key and modify the values.
+    // return 0 (SUCCESS): operation is successfully done and the transaction can continue the next operation.
+    // return non-zero (FAILED): operation is failed 
+    // (e.g., deadlock detected) and the transaction should be aborted. 
+    // Note that all tasks that need to be handled 
+    // (e.g., releasing the locks that are held on this transaction, rollback of previous operations, etc... ) 
+    // should be completed in db_update().
+    // printf("@0\n");
+    if (!buf_table_is_open(tableID)){
+        return -1;
+    }
+
+    // printf("@1\n");
+    LeafPage leafNode;
+    pagenum_t leafPageNum;
+    
+    lock_t* lock = lock_acquire(tableID,key,trxID,LM_EXCLUSIVE);
+    // printf("@2\n");
+    if (lock==NULL){
+        // printf("@2-1\n");
+        // trx_abort(trxID);
+        printf("~~~~~~~~\n");
+        return -1;
+    }
+    // printf("@3\n");
+    leafPageNum = findLeaf(tableID,key,&leafNode);
+    if(leafPageNum==0){
+        buf_unpin_page(tableID, leafPageNum);    
+        return -2;
+    }
+    // printf("@4\n");
+    // BS
+    for (int i=0;i<leafNode.numberOfKeys;i++){
+        if (leafNode.records[i].key == key){
+            lock_engrave(lock, leafPageNum, leafNode.records[i].value);
+            memcpy(leafNode.records[i].value,value,VALUE_SIZE);
+            buf_set_page(tableID, leafPageNum, (page_t*)&leafNode);
+            return 0;
+        }
+    }
+    buf_unpin_page(tableID, leafPageNum);
+
+    return -1;
+}
+
+/* Finds and returns the record to which
+ * a key refers.
+ */
+// closed pin function;
+int find_new (int tableID, int64_t key, char * returnValue, int trxID){
+    // lock을 aqquire해주고 수행해야함
+    // Read a value in the table with matching key for the transaction having trx_id.
+    // return 0 (SUCCESS): operation is successfully done and the transaction can continue the next operation.
+    // return non-zero (FAILED): operation is failed (e.g., deadlock detected) and the transaction should be aborted. 
+    // Note that all tasks that need to be handled 
+    // (e.g., releasing the locks that are held by this transaction, rollback of previous operations, etc... ) 
+    // should be completed in db_find().
+    
+    
+    // printf("@1\n");
+    // Table is not opend yet.
+    if (!buf_table_is_open(tableID)){
+        return -1;
+    }
+
+    LeafPage leafNode;
+    pagenum_t leafPageNum;
+
+    lock_t* lock = lock_acquire(tableID,key,trxID,LM_SHARED);
+    if (lock==NULL){
+        // trx_abort(trxID);
+        return -1;
+    }
+    // printf("@2\n");
+    leafPageNum = findLeaf(tableID,key,&leafNode);
+    if(leafPageNum==0){
+        buf_unpin_page(tableID, leafPageNum);    
+        return -2;
+    }
+    // printf("@3\n");
+    // BS
+    for (int i=0;i<leafNode.numberOfKeys;i++){
+        if (leafNode.records[i].key == key){
+            // printf("@6\n");
+            memcpy(returnValue,leafNode.records[i].value,VALUE_SIZE);
+            buf_unpin_page(tableID, leafPageNum);
+            // printf("@7\n");
+            return 0;
+        }
+    }
+    // printf("@4\n");
+    buf_unpin_page(tableID, leafPageNum);
+    // printf("@5\n");
+    return -1;
+}
+
 /* Finds and returns the record to which
  * a key refers.
  */
@@ -902,7 +1001,6 @@ void printTree(int tableID){
         buf_unpin_page(tableID, HEADER_PAGE_NUMBER);
         return;
     }
-    
     queue[back]=headerPage.rootPageNumber;
     buf_unpin_page(tableID, HEADER_PAGE_NUMBER);
     back++;
@@ -916,20 +1014,81 @@ void printTree(int tableID){
             InternalPage parentNode;
             buf_get_page(tableID, node.parentPageNumber, (page_t*)&parentNode);
             if(pageNumOf(&parentNode, 0) == nodePageNum){
+                buf_unpin_page(tableID,node.parentPageNumber);
                 newRank = pathToRoot(tableID ,&node);
                 if (newRank != rank){
                     rank = newRank;
                     printf("\n");
                 } 
+            }else{
+                buf_unpin_page(tableID,node.parentPageNumber);
             }
-            buf_unpin_page(tableID,node.parentPageNumber);
         }
-
         if(node.isLeaf){
             LeafPage* leafNode = (LeafPage*)&node;
             printf("(%llu) ",nodePageNum);
             for (i = 0;i<leafNode->numberOfKeys;i++){
                 printf("%lld ",leafNode->records[i].key);
+            }
+        }else{
+            InternalPage* internalNode = (InternalPage*)&node;
+            printf("(%llu) ",nodePageNum);
+            for (i = 0;i<internalNode->numberOfKeys;i++){
+                printf("%lld ",internalNode->recordIDs[i].key);
+                queue[back]=pageNumOf(internalNode,i);
+                back++;
+            }
+            queue[back]=pageNumOf(internalNode,i);
+            back++;
+        }
+        printf("| ");
+        buf_unpin_page(tableID, nodePageNum);
+    }
+    printf("\n");
+}
+
+void printTreeValue(int tableID){
+    int i;
+    int front = 0;
+    int back = 0;
+    int rank = 0;
+    int newRank = 0;
+
+    HeaderPage headerPage;
+    buf_get_page(tableID, HEADER_PAGE_NUMBER, (page_t*)&headerPage);
+    if (headerPage.rootPageNumber == 0) {
+		printf("Empty tree.\n");
+        buf_unpin_page(tableID, HEADER_PAGE_NUMBER);
+        return;
+    }
+    queue[back]=headerPage.rootPageNumber;
+    buf_unpin_page(tableID, HEADER_PAGE_NUMBER);
+    back++;
+    while (front < back) {
+        pagenum_t nodePageNum = queue[front];
+        front++;
+
+        NodePage node;
+        buf_get_page(tableID, nodePageNum, (page_t*)&node);
+        if(node.parentPageNumber != 0 ){
+            InternalPage parentNode;
+            buf_get_page(tableID, node.parentPageNumber, (page_t*)&parentNode);
+            if(pageNumOf(&parentNode, 0) == nodePageNum){
+                buf_unpin_page(tableID,node.parentPageNumber);
+                newRank = pathToRoot(tableID ,&node);
+                if (newRank != rank){
+                    rank = newRank;
+                    printf("\n");
+                } 
+            }else{
+                buf_unpin_page(tableID,node.parentPageNumber);
+            }
+        }
+        if(node.isLeaf){
+            LeafPage* leafNode = (LeafPage*)&node;
+            printf("(%llu) ",nodePageNum);
+            for (i = 0;i<leafNode->numberOfKeys;i++){
+                printf("%lld.%s ",leafNode->records[i].key,leafNode->records[i].value);
             }
         }else{
             InternalPage* internalNode = (InternalPage*)&node;
