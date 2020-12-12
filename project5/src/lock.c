@@ -360,7 +360,7 @@ lock_acquire(int table_id, int64_t key, int trx_id, int lock_mode)
 				clock = clock->next;
 			}	
 			
-			int deadLock = 1;
+			int deadLock = 0;
 			if (conflict){
 				// deadLock detection
 				if(deadLock){
