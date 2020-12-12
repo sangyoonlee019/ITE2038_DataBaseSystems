@@ -360,8 +360,9 @@ lock_acquire(int table_id, int64_t key, int trx_id, int lock_mode)
 				clock = clock->next;
 			}	
 			
-			int deadLock = 0;
+			int deadLock = 1;
 			if (conflict){
+				// deadLock detection
 				if(deadLock){
 					trx_abort(trx_id);
 					pthread_mutex_unlock(&trx_table_latch);
