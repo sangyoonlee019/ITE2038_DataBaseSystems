@@ -4,8 +4,8 @@
 #include "lock.h"
 #include "file.h"
 
-#define OPNUM 4
-#define TRHEAD_NUM 3
+#define OPNUM 10000
+#define TRHEAD_NUM 10
 #define MAXNUM 10
 
 int commit = 0;
@@ -24,25 +24,25 @@ void* trx_func(void* argv){
             //target = -1;
         //}
 
-        if (rand() % 2 == 0){
-            printf("trx %d try find key: %d\n",trx_id,target);
-            if (db_find(1, target, value, trx_id) == -1){
-                printf("trx %d's find is aborted at key: %d ==================================================\n\n",trx_id,target);
-                abort_find++;
-                pthread_exit(NULL);
-            }
-            printf("trx %d find success key: %d \n\n",trx_id,target);
-        }
-        // else{
-        //     char update_value[120];
-        //     sprintf(update_value, "trx%d", trx_id);
-        //     printf("trx %d try update key: %d\n",trx_id,target);
-        //     if (db_update(1, target, update_value, trx_id) == -1){
-        //         printf("trx %d's update is aborted at key: %d ==================================================\n\n",trx_id,target);
-        //         abort_update++;
+        // if (rand() % 2 == 0){
+        //     printf("trx %d try find key: %d\n",trx_id,target);
+        //     if (db_find(1, target, value, trx_id) == -1){
+        //         printf("trx %d's find is aborted at key: %d ==================================================\n\n",trx_id,target);
+        //         abort_find++;
         //         pthread_exit(NULL);
         //     }
-        //     printf("trx %d update success key: %d \n\n",trx_id,target);
+        //     printf("trx %d find success key: %d \n\n",trx_id,target);
+        // }
+        // else{
+            char update_value[120];
+            sprintf(update_value, "trx%d", trx_id);
+            printf("trx %d try update key: %d\n",trx_id,target);
+            if (db_update(1, target, update_value, trx_id) == -1){
+                printf("trx %d's update is aborted at key: %d ==================================================\n\n",trx_id,target);
+                abort_update++;
+                pthread_exit(NULL);
+            }
+            printf("trx %d update success key: %d \n\n",trx_id,target);
         // }
     }
 

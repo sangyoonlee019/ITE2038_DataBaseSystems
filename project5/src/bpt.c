@@ -92,8 +92,8 @@ int update(int tableID, int64_t key, char* value, int trxID){
     // printf("@2\n");
     if (lock==NULL){
         // printf("@2-1\n");
-        // trx_abort(trxID);
-        printf("~~~~~~~~\n");
+        trx_abort(trxID);
+        // printf("~~~~~~~~\n");
         return -1;
     }
     // printf("@3\n");
@@ -142,7 +142,8 @@ int find_new (int tableID, int64_t key, char * returnValue, int trxID){
 
     lock_t* lock = lock_acquire(tableID,key,trxID,LM_SHARED);
     if (lock==NULL){
-        // trx_abort(trxID);
+        trx_abort(trxID);
+        // printf("~~~~~~~~\n");
         return -1;
     }
     // printf("@2\n");

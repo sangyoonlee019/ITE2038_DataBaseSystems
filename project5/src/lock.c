@@ -14,6 +14,7 @@ struct lock_t {
 	int state;
 	pagenum_t page_num;
 	char history[120];
+	int visited;
 };
 
 typedef struct lock_t lock_t;
@@ -45,9 +46,13 @@ lock_trx_begin(void){
 
 int 
 lock_trx_commit(int trxID){
-	if(debug1) printf("trx_commit (lock: %d trx: %d)\n",lock_check_lock(),trx_check_lock());
+	if(debug1) printf("Trx%d: trx_commit (lock: %d trx: %d)\n",trxID,lock_check_lock(),trx_check_lock());
 	pthread_mutex_lock(&trx_table_latch);
 	Trx* trx = trx_find(trxID);
+	if (trx == NULL){
+		pthread_mutex_unlock(&trx_table_latch);
+		return 0;
+	}
 	lock_t* lock = trx->head;
 	if (lock ==NULL){
 		pthread_mutex_unlock(&trx_table_latch);
@@ -57,7 +62,7 @@ lock_trx_commit(int trxID){
 	lock_t* nextLock = lock->trx_next;
 	
 	lock_release(lock);
-	while(nextLock!=NULL){
+	while(nextLock){
 		lock = nextLock;
 		nextLock = lock->trx_next;
 		lock_release(lock);
@@ -65,63 +70,74 @@ lock_trx_commit(int trxID){
 	
 	trx_delete(trxID);
 	pthread_mutex_unlock(&trx_table_latch);
-	
+	if(debug1) printf("Trx%d: trx_commit end (lock: %d trx: %d)\n",trxID,lock_check_lock(),trx_check_lock());
 	return trxID;
 }
 
 int trx_abort(int trxID){
-	if (debug1) printf("trx%d abort called!\n",trxID);
-	// pthread_mutex_lock(&trx_table_latch);
+	if(debug1) printf("Trx%d: trx_abort (lock: %d trx: %d buf: %d)\n",trxID,lock_check_lock(),trx_check_lock(),buf_check_lock());
+	pthread_mutex_lock(&trx_table_latch);
 	Trx* trx = trx_find(trxID);
-	
 	if (trx==NULL){
-		// pthread_mutex_unlock(&trx_table_latch);
+		printf("trx_abort error: trx is NULL\n");
 		return -1;
 	} 
 	
+	// printf("@1\n");
 	lock_t* lock = trx->head;
-	if (lock == NULL){
-		// pthread_mutex_unlock(&trx_table_latch);
-		return trxID;
-	} 
-	
-	
+	if (lock ==NULL){
+		return -1;
+	}
+	// printf("@2\n");
 	lock_t* nextLock = lock->trx_next;
-	if (lock->lock_mode==LM_EXCLUSIVE){
+	if (lock->lock_mode == LM_EXCLUSIVE){
+		// Roll Back
 		LeafPage leafNode;
+		// printf("buf: %d\n",buf_check_lock());
 		buf_get_page(lock->sentinal->tableID, lock->page_num, (page_t*)&leafNode);
-		
 		for (int i=0;i<leafNode.numberOfKeys;i++){
 			if (leafNode.records[i].key == lock->sentinal->recordID){
+				// printf("history1\n");
 				memcpy(leafNode.records[i].value,history,VALUE_SIZE);
 				buf_set_page(lock->sentinal->tableID, lock->page_num, (page_t*)&leafNode);
+				// printf("history1-end\n");
 				break;
 			}
 		}
-		
+		buf_unpin_page(lock->sentinal->tableID, lock->page_num);
+		// printf("bufend: %d\n",buf_check_lock());
 	}
-	
-	lock_release_abort(lock);
-
-	while(nextLock!=NULL){
+	// printf("@3\n");
+	lock_release(lock);
+	// printf("@4\n");
+	while(nextLock){
 		lock = nextLock;
-		nextLock = lock->trx_next;
-		if (lock->lock_mode==LM_EXCLUSIVE){
+		if (lock->lock_mode == LM_EXCLUSIVE){
+			// Roll Back
 			LeafPage leafNode;
+			// printf("buf: %d\n",buf_check_lock());
 			buf_get_page(lock->sentinal->tableID, lock->page_num, (page_t*)&leafNode);
 			for (int i=0;i<leafNode.numberOfKeys;i++){
 				if (leafNode.records[i].key == lock->sentinal->recordID){
+					// printf("history2\n");
 					memcpy(leafNode.records[i].value,history,VALUE_SIZE);
 					buf_set_page(lock->sentinal->tableID, lock->page_num, (page_t*)&leafNode);
+					// printf("history2-end\n");
 					break;
 				}
 			}
+			buf_unpin_page(lock->sentinal->tableID, lock->page_num);
+			// printf("bufend: %d\n",buf_check_lock());
 		}
-		lock_release_abort(lock);
+
+		nextLock = lock->trx_next;
+		lock_release(lock);
 	}
-	
+	// printf("abort_end!\n");
 	trx_delete(trxID);
-	// pthread_mutex_unlock(&trx_table_latch);
+	// printf("abort_end2!\n");
+	pthread_mutex_unlock(&trx_table_latch);
+	if(debug1) printf("Trx%d: trx_abort end (lock: %d trx: %d)\n",trxID,lock_check_lock(),trx_check_lock());
 	return trxID;
 }
 
@@ -268,8 +284,8 @@ init_lock_table()
 lock_t*
 lock_acquire(int table_id, int64_t key, int trx_id, int lock_mode)
 {	
-	if(debug1 && lock_mode==LM_SHARED) printf("lock_acqire: S%lld (lock: %d trx: %d)\n",key,lock_check_lock(),trx_check_lock());
-	if(debug1 && lock_mode==LM_EXCLUSIVE) printf("lock_acqire: X%lld (lock: %d trx: %d)\n",key,lock_check_lock(),trx_check_lock());
+	if(debug1 && lock_mode==LM_SHARED) printf("Trx%d: lock_acqire: S%lld (lock: %d trx: %d)\n",trx_id,key,lock_check_lock(),trx_check_lock());
+	if(debug1 && lock_mode==LM_EXCLUSIVE) printf("Trx%d: lock_acqire: X%lld (lock: %d trx: %d)\n",trx_id,key,lock_check_lock(),trx_check_lock());
 	pthread_mutex_lock(&trx_table_latch);
 	pthread_mutex_lock(&lock_table_latch);
 	
@@ -286,6 +302,7 @@ lock_acquire(int table_id, int64_t key, int trx_id, int lock_mode)
 		lock->owner_trx_id = trx_id;
 		lock->state = LS_ACQIRED;
 		lock->trx_next = NULL;
+		lock->visited = 0;
 
 		node->tail = lock;
 		node->head = lock;
@@ -307,6 +324,7 @@ lock_acquire(int table_id, int64_t key, int trx_id, int lock_mode)
 		lock->lock_mode = lock_mode;
 		lock->owner_trx_id = trx_id;
 		lock->trx_next = NULL;
+		lock->visited = 0;
 
 		if(node->head==NULL){
 			lock->state = LS_ACQIRED;
@@ -327,6 +345,7 @@ lock_acquire(int table_id, int64_t key, int trx_id, int lock_mode)
 			pthread_mutex_unlock(&trx_table_latch);
 		}else{
 			int conflict = 0;
+			int deadLock = 0;
 			lock_t* clock = node->head;
 			lock_t* lastLock = node->tail;
 			while(clock){
@@ -338,7 +357,7 @@ lock_acquire(int table_id, int64_t key, int trx_id, int lock_mode)
 							pthread_mutex_unlock(&lock_table_latch);
 							return clock;
 						}else{
-							conflict = 1;
+							deadLock = 1;
 							break;
 						}
 					}else{
@@ -360,11 +379,22 @@ lock_acquire(int table_id, int64_t key, int trx_id, int lock_mode)
 				clock = clock->next;
 			}	
 			
-			int deadLock = 0;
-			if (conflict){
+			if (deadLock){
+				if (debug1) printf("@deadLock is detected in trx %d!!!\n",trx_id);
+				// trx_abort(trx_id);
+				pthread_mutex_unlock(&trx_table_latch);
+				pthread_mutex_unlock(&lock_table_latch);
+				return NULL;
+			}else if (conflict){
 				// deadLock detection
+				// Step1
+				if (lock_detection(node->tail,trx_id)>0){
+					deadLock = 1;
+				}
+				lock_visited_initialize();
 				if(deadLock){
-					trx_abort(trx_id);
+					if (debug1) printf("@deadLock is detected in trx %d!!!\n",trx_id);
+					// trx_abort(trx_id);
 					pthread_mutex_unlock(&trx_table_latch);
 					pthread_mutex_unlock(&lock_table_latch);
 					return NULL;
@@ -413,7 +443,7 @@ lock_acquire(int table_id, int64_t key, int trx_id, int lock_mode)
 	}	
 	
 	pthread_mutex_unlock(&lock_table_latch);
-	if (debug1) printf("lock_acquire end (lock: %d trx: %d)\n",lock_check_lock(),trx_check_lock());
+	if (debug1) printf("lock_acquire: %d end (lock: %d trx: %d)\n",trx_id,lock_check_lock(),trx_check_lock());
 	return lock;
 }
 
@@ -520,6 +550,50 @@ lock_release_abort(lock_t* lock_obj)
 	// pthread_mutex_unlock(&lock_table_latch);
 	// printf("lock_release_abort end (lock: %d trx: %d)\n",lock_check_lock(),trx_check_lock());
 	return 0;
+}
+
+int lock_detection(lock_t* clock, int trxID){
+	if(clock->visited) return 0;
+	int detection = 0;
+	
+	// Step 1
+	while(clock){
+		// Step 2
+		clock->visited = 1;
+		if(clock->owner_trx_id == trxID){
+			detection = 1;
+			return detection;
+		}
+
+		Trx* trx = trx_find(clock->owner_trx_id);
+		lock_t* tlock = trx->head;
+		while(tlock){
+			if (tlock->state == LS_WAITING){
+				detection+=lock_detection(tlock,trxID);
+				// Option for efficiency
+				if(detection) return detection;
+			}
+
+			tlock = tlock->trx_next;
+		}
+
+		clock = clock->prev;
+	}
+	return detection;
+}
+
+void lock_visited_initialize(void){
+	for (int i=0; i<MAX_HASH;i++){
+		Node* cnode = lockTable[i];
+		while(cnode){
+			lock_t* clock = cnode->head;
+			while(clock){
+				clock->visited = 0;
+				clock = clock->next;
+			}
+			cnode = cnode->hnext;
+		}
+	}
 }
 
 void 
