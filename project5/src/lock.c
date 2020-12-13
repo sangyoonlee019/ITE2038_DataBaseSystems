@@ -569,7 +569,12 @@ int lock_detection(lock_t* clock, int trxID){
 		lock_t* tlock = trx->head;
 		while(tlock){
 			if (tlock->state == LS_WAITING){
-				detection+=lock_detection(tlock,trxID);
+				lock_t* slock = tlock->prev;
+				while (slock && slock->lock_mode == LM_SHARED){
+					slock->visited = 1;
+					slock = slock->prev;
+				}
+				if (slock) detection+=lock_detection(slock,trxID);
 				// Option for efficiency
 				if(detection) return detection;
 			}
