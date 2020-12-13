@@ -570,9 +570,11 @@ int lock_detection(lock_t* clock, int trxID){
 		while(tlock){
 			if (tlock->state == LS_WAITING){
 				lock_t* slock = tlock->prev;
-				while (slock && slock->lock_mode == LM_SHARED){
-					slock->visited = 1;
-					slock = slock->prev;
+				if (tlock->lock_mode == LM_SHARED){
+					while (slock && slock->lock_mode == LM_SHARED){
+						// slock->visited = 1;
+						slock = slock->prev;
+					}
 				}
 				if (slock) detection+=lock_detection(slock,trxID);
 				// Option for efficiency
