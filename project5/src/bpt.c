@@ -88,22 +88,22 @@ int update(int tableID, int64_t key, char* value, int trxID){
     LeafPage leafNode;
     pagenum_t leafPageNum;
     
+    lock_t* lock = lock_acquire(tableID,key,trxID,LM_EXCLUSIVE);
+    // printf("@2\n");
+    if (lock==NULL){
+        // printf("@2-1\n");
+        trx_abort(trxID);
+        // printf("~~~~~~~~\n");
+        return -1;
+    }
     // printf("@3\n");
     leafPageNum = findLeaf(tableID,key,&leafNode);
     if(leafPageNum==0){
         buf_unpin_page(tableID, leafPageNum);    
         return -2;
     }
-    buf_unpin_page(tableID, leafPageNum);
-
-    lock_t* lock = lock_acquire(tableID,key,trxID,LM_EXCLUSIVE);
-    if (lock==NULL){
-        trx_abort(trxID);
-        return -1;
-    }
     // printf("@4\n");
     // BS
-    buf_pin_page(tableID, leafPageNum);
     for (int i=0;i<leafNode.numberOfKeys;i++){
         if (leafNode.records[i].key == key){
             lock_engrave(lock, leafPageNum, leafNode.records[i].value);
@@ -140,24 +140,20 @@ int find_new (int tableID, int64_t key, char * returnValue, int trxID){
     LeafPage leafNode;
     pagenum_t leafPageNum;
 
-
-
+    lock_t* lock = lock_acquire(tableID,key,trxID,LM_SHARED);
+    if (lock==NULL){
+        trx_abort(trxID);
+        // printf("~~~~~~~~\n");
+        return -1;
+    }
     // printf("@2\n");
     leafPageNum = findLeaf(tableID,key,&leafNode);
     if(leafPageNum==0){
         buf_unpin_page(tableID, leafPageNum);    
         return -2;
     }
-    buf_unpin_page(tableID, leafPageNum);
-
-    lock_t* lock = lock_acquire(tableID,key,trxID,LM_SHARED);
-    if (lock==NULL){
-        trx_abort(trxID);
-        return -1;
-    }
     // printf("@3\n");
     // BS
-    buf_pin_page(tableID, leafPageNum);
     for (int i=0;i<leafNode.numberOfKeys;i++){
         if (leafNode.records[i].key == key){
             // printf("@6\n");
