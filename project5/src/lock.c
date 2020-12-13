@@ -100,17 +100,10 @@ int trx_abort(int trxID){
 		}
 		
 	}
-<<<<<<< HEAD
 	// printf("@3\n");
 	lock_release_abort(lock);
 	// printf("@4\n");
 	while(nextLock){
-=======
-	
-	lock_release_abort(lock);
-
-	while(nextLock!=NULL){
->>>>>>> parent of 438d965... deadlock detection and abort finished
 		lock = nextLock;
 		nextLock = lock->trx_next;
 		if (lock->lock_mode==LM_EXCLUSIVE){
@@ -124,11 +117,8 @@ int trx_abort(int trxID){
 				}
 			}
 		}
-<<<<<<< HEAD
 
 		nextLock = lock->trx_next;
-=======
->>>>>>> parent of 438d965... deadlock detection and abort finished
 		lock_release_abort(lock);
 	}
 	

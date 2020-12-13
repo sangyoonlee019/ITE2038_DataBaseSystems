@@ -57,12 +57,9 @@ void lock_engrave(lock_t* lock_obj, pagenum_t page_num, char* value);
 int terminate_lock_table(void);
 int lock_check_lock(void);
 int lock_release_abort(lock_t* lock_obj);
-<<<<<<< HEAD
 int lock_detection(lock_t* lock, int trxID);
 void lock_visited_initialize(void);
 
-=======
->>>>>>> parent of 438d965... deadlock detection and abort finished
 
 /* APIs for hash */
 int hashKey(int tableID, int64_t recordID);
