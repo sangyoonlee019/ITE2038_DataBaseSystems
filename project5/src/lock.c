@@ -108,7 +108,7 @@ int trx_abort(int trxID){
 		// printf("bufend: %d\n",buf_check_lock());
 	}
 	// printf("@3\n");
-	lock_release(lock);
+	lock_release_abort(lock);
 	// printf("@4\n");
 	while(nextLock){
 		lock = nextLock;
@@ -131,7 +131,7 @@ int trx_abort(int trxID){
 		}
 
 		nextLock = lock->trx_next;
-		lock_release(lock);
+		lock_release_abort(lock);
 	}
 	// printf("abort_end!\n");
 	trx_delete(trxID);
@@ -506,6 +506,7 @@ lock_release_abort(lock_t* lock_obj)
 	// if(lock_obj->lock_mode==LM_SHARED) printf("lock_release_abort: S%lld (lock: %d trx: %d)\n",lock_obj->sentinal->recordID,lock_check_lock(),trx_check_lock());
 	// if(lock_obj->lock_mode==LM_EXCLUSIVE) printf("lock_release_abort: X%lld\n",lock_obj->sentinal->recordID);
 	// pthread_mutex_lock(&lock_table_latch);
+	pthread_mutex_lock(&lock_table_latch);
 	Node* node  = lock_obj->sentinal;
 	lock_t* headLock = (lock_t*)node->head;
 	lock_t* lastLock = (lock_t*)node->tail;
@@ -514,40 +515,42 @@ lock_release_abort(lock_t* lock_obj)
 		// S or X
 		node->head = NULL;
 		node->tail = NULL;
-		node->acqiredCount--;
+		if(lock_obj->state == LS_ACQIRED) node->acqiredCount--;
 	}else if (lock_obj==headLock){
 		// S or X
 		node->head = lock_obj->next;
 		lock_obj->next->prev = NULL;
-		node->acqiredCount--;
-		
-		if(node->acqiredCount==0){
-			if (lock_obj->next->lock_mode==LM_SHARED){
-				lock_t* slock = lock_obj->next;
-				while(slock && slock->lock_mode==LM_SHARED){
-					pthread_cond_signal(&(slock->cond));
-					slock = slock->next;
+		if(lock_obj->state == LS_ACQIRED){
+			node->acqiredCount--;
+			if(node->acqiredCount==0){
+				if (lock_obj->next->lock_mode==LM_SHARED){
+					lock_t* slock = lock_obj->next;
+					while(slock && slock->lock_mode==LM_SHARED){
+						pthread_cond_signal(&(slock->cond));
+						slock = slock->next;
+					}
+				}else{
+					pthread_cond_signal(&(lock_obj->next->cond));
 				}
-			}else{
-				pthread_cond_signal(&(lock_obj->next->cond));
 			}
-		}
+		} 
+		
 	}else if (lock_obj==lastLock){
 		// S
 		node->tail = lock_obj->prev;
 		lock_obj->prev->next = NULL;
-		node->acqiredCount--;
+		if(lock_obj->state == LS_ACQIRED) node->acqiredCount--;
 
 	}else{
 		// S
 		lock_obj->prev->next = lock_obj->next;
 		lock_obj->next->prev = lock_obj->prev;
-		node->acqiredCount--;
+		if(lock_obj->state == LS_ACQIRED) node->acqiredCount--;
 
 	}
 
 	free(lock_obj);
-	// pthread_mutex_unlock(&lock_table_latch);
+	pthread_mutex_unlock(&lock_table_latch);
 	// printf("lock_release_abort end (lock: %d trx: %d)\n",lock_check_lock(),trx_check_lock());
 	return 0;
 }
