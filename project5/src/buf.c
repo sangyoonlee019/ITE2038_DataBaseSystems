@@ -308,6 +308,17 @@ void buf_set_page(tableid tableID, pagenum_t pageNum, const page_t* src){
     pthread_mutex_unlock(&(setBuffer->controlBlock.page_latch));
 }
 
+void buf_pin_page(tableid tableID, pagenum_t pageNum){
+    if (debug) printf("--------pin page%llu-%d\n",pageNum,tableID);
+    int setBufferIdx = buf_find_page(tableID, pageNum);
+
+    if (setBufferIdx==-1){
+        printf("error: pin mismatch!!\n");
+    }else{
+        int r = pthread_mutex_lock(&(bufferArray[setBufferIdx].controlBlock.page_latch));
+    }
+}
+
 void buf_unpin_page(tableid tableID, pagenum_t pageNum){
     if (debug) printf("--------unpin page%llu-%d\n",pageNum,tableID);
     int setBufferIdx = buf_find_page(tableID, pageNum);
