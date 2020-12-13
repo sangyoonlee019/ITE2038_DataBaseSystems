@@ -88,6 +88,17 @@ int update(int tableID, int64_t key, char* value, int trxID){
     LeafPage leafNode;
     pagenum_t leafPageNum;
     
+<<<<<<< HEAD
+=======
+    lock_t* lock = lock_acquire(tableID,key,trxID,LM_EXCLUSIVE);
+    // printf("@2\n");
+    if (lock==NULL){
+        // printf("@2-1\n");
+        // trx_abort(trxID);
+        printf("~~~~~~~~\n");
+        return -1;
+    }
+>>>>>>> parent of 438d965... deadlock detection and abort finished
     // printf("@3\n");
     leafPageNum = findLeaf(tableID,key,&leafNode);
     if(leafPageNum==0){
@@ -140,8 +151,16 @@ int find_new (int tableID, int64_t key, char * returnValue, int trxID){
     LeafPage leafNode;
     pagenum_t leafPageNum;
 
+<<<<<<< HEAD
 
 
+=======
+    lock_t* lock = lock_acquire(tableID,key,trxID,LM_SHARED);
+    if (lock==NULL){
+        // trx_abort(trxID);
+        return -1;
+    }
+>>>>>>> parent of 438d965... deadlock detection and abort finished
     // printf("@2\n");
     leafPageNum = findLeaf(tableID,key,&leafNode);
     if(leafPageNum==0){
