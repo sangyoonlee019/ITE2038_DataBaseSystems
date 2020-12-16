@@ -84,7 +84,7 @@ void insertIntoInternal(int tableID, InternalPage* parentNode, pagenum_t parentP
 void insertIntoInternalAfterSplitting(int tableID, InternalPage* parentNode, pagenum_t parentPageNum, int leftIndex, int64_t key, pagenum_t rightPageNum);
 
 // New untility function
-int initDB(int bufferNum);
+int initDB(int bufferNum, int flag, int log_num, char* log_path, char* logmsg_path);
 int openTable(char* pathname);
 int closeTable(int tableID);
 int shutdownDB(void);

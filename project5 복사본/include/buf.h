@@ -78,6 +78,8 @@ void buf_set_page(tableid tableID, pagenum_t pagenum, const page_t* src);
 
 void buf_unpin_page(tableid tableID, pagenum_t pagenum);
 
+void buf_pin_page(tableid tableID, pagenum_t pagenum);
+
 int buf_find_page(tableid tableID, pagenum_t pagenum);
 
 int buf_check_lock(void);

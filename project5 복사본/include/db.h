@@ -3,7 +3,8 @@
 
 #include<inttypes.h>
 
-int init_db(int buf_num);
+// int init_db(int buf_num);
+int init_db(int buf_num, int flag, int log_num, char* log_path, char* logmsg_path);
 int open_table(char* pathname);
 int close_table(int table_id);
 int db_insert (int table_id, int64_t key, char * value);

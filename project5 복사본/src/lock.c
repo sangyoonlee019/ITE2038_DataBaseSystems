@@ -143,6 +143,7 @@ trx_new(int trxID)
 	}
 
 	newTrx->trxID = trxID;
+	pthread_mutex_init(&newTrx->trx_latch,NULL);
 	newTrx->head = NULL;
 	newTrx->next = NULL;
 
@@ -186,7 +187,7 @@ trx_find(int trxID)
     return  NULL;
 }
 
-void trx_insert_lock(int trx_id, lock_t* lock){
+void trx_insert_lock(int trx_id, lock_t* lock, int trx_lock){
 	Trx* trx = trx_find(trx_id);
 	if (trx==NULL){
 		printf("error: trx_find\n");
@@ -201,6 +202,7 @@ void trx_insert_lock(int trx_id, lock_t* lock){
 		}
 		currentLock->trx_next = lock;
 	}
+
 }
 
 void 
@@ -279,7 +281,11 @@ lock_acquire(int table_id, int64_t key, int trx_id, int lock_mode,lock_t* lock)
 	if(debug1 && lock_mode==LM_SHARED) printf("Trx%d: lock_acqire: S%lld (lock: %d trx: %d)\n",trx_id,key,lock_check_lock(),trx_check_lock());
 	if(debug1 && lock_mode==LM_EXCLUSIVE) printf("Trx%d: lock_acqire: X%lld (lock: %d trx: %d)\n",trx_id,key,lock_check_lock(),trx_check_lock());
 	pthread_mutex_lock(&trx_table_latch);
+	if(debug1 && lock_mode==LM_SHARED) printf("Trx%d: lock_acqire2: S%lld (lock: %d trx: %d)\n",trx_id,key,lock_check_lock(),trx_check_lock());
+	if(debug1 && lock_mode==LM_EXCLUSIVE) printf("Trx%d: lock_acqire2: X%lld (lock: %d trx: %d)\n",trx_id,key,lock_check_lock(),trx_check_lock());
 	pthread_mutex_lock(&lock_table_latch);
+	if(debug1 && lock_mode==LM_SHARED) printf("Trx%d: lock_acqire3: S%lld (lock: %d trx: %d)\n",trx_id,key,lock_check_lock(),trx_check_lock());
+	if(debug1 && lock_mode==LM_EXCLUSIVE) printf("Trx%d: lock_acqire3: X%lld (lock: %d trx: %d)\n",trx_id,key,lock_check_lock(),trx_check_lock());
 	
 	Node* node = getHash(table_id,key);  
 
@@ -299,7 +305,7 @@ lock_acquire(int table_id, int64_t key, int trx_id, int lock_mode,lock_t* lock)
 		node->head = lock;
 		node->acqiredCount++;
 
-		trx_insert_lock(trx_id,lock);
+		trx_insert_lock(trx_id,lock,0);
 		pthread_mutex_unlock(&trx_table_latch);
 	}else{
 		lock->prev=NULL;
@@ -317,7 +323,7 @@ lock_acquire(int table_id, int64_t key, int trx_id, int lock_mode,lock_t* lock)
 			node->head = lock;
 			node->acqiredCount++;
 	
-			trx_insert_lock(trx_id,lock);
+			trx_insert_lock(trx_id,lock,0);
 			pthread_mutex_unlock(&trx_table_latch);
 		}else{
 			int conflict = 0;
@@ -348,9 +354,11 @@ lock_acquire(int table_id, int64_t key, int trx_id, int lock_mode,lock_t* lock)
 						if(clock->state==LS_ACQIRED){
 							conflict=0;
 						}else{
+							// printf("something is wrong\n");
 							conflict=1;
 						}
 					}else{
+						// printf("something is wrong2: %d-%d\n",clock->lock_mode,lock->lock_mode);
 						conflict=1;
 					}
 				}
@@ -364,6 +372,7 @@ lock_acquire(int table_id, int64_t key, int trx_id, int lock_mode,lock_t* lock)
 				pthread_mutex_unlock(&lock_table_latch);
 				return DEADLOCK;
 			}else if (conflict){
+				// printf("@\n");
 				// deadLock detection
 				// Step1
 				if (lock_detection(node->tail,trx_id)>0){
@@ -383,8 +392,12 @@ lock_acquire(int table_id, int64_t key, int trx_id, int lock_mode,lock_t* lock)
 					lock->prev = lastLock;
 					node->tail = lock;
 
-					trx_insert_lock(trx_id,lock);
+					trx_insert_lock(trx_id,lock,1);
 					pthread_mutex_unlock(&trx_table_latch);
+					// 원래 없던거 
+					// pthread_mutex_unlock(&lock_table_latch);
+					// if (debug1) printf("lock_acquire: %d wait (lock: %d trx: %d)\n",trx_id,lock_check_lock(),trx_check_lock());
+					// return NEED_TO_WAIT;
 					pthread_cond_init(&lock->cond,NULL);
 					pthread_cond_wait(&lock->cond,&lock_table_latch);
 					
@@ -399,7 +412,7 @@ lock_acquire(int table_id, int64_t key, int trx_id, int lock_mode,lock_t* lock)
 				node->tail = lock;
 				node->acqiredCount++;
 				
-				trx_insert_lock(trx_id,lock);
+				trx_insert_lock(trx_id,lock,0);
 				pthread_mutex_unlock(&trx_table_latch);
 			}
 		}
@@ -409,6 +422,26 @@ lock_acquire(int table_id, int64_t key, int trx_id, int lock_mode,lock_t* lock)
 	if (debug1) printf("lock_acquire: %d end (lock: %d trx: %d)\n",trx_id,lock_check_lock(),trx_check_lock());
 	return ACQUIRED;
 }
+
+void lock_wait(lock_t* lock_obj){
+	// pthread_mutex_lock(&trx_table_latch);
+	// pthread_mutex_lock(&lock_table_latch);
+	printf("!!!!\n");
+	pthread_cond_init(&lock_obj->cond,NULL);
+	Trx* trx = trx_find(lock_obj->owner_trx_id);
+	pthread_cond_wait(&lock_obj->cond,&trx->trx_latch);
+	pthread_mutex_unlock(&trx->trx_latch);
+	printf("wakeUp!!!\n");
+	lock_obj->state = LS_ACQIRED;
+	lock_obj->sentinal->acqiredCount++;
+
+	// pthread_mutex_unlock(&trx_table_latch);
+	// pthread_mutex_unlock(&lock_table_latch);
+	if (debug1) printf("lock_acquire: %d end (lock: %d trx: %d)\n",lock_obj->owner_trx_id,lock_check_lock(),trx_check_lock());
+
+}
+
+
 
 int
 lock_release(lock_t* lock_obj)
@@ -434,11 +467,18 @@ lock_release(lock_t* lock_obj)
 			if (lock_obj->next->lock_mode==LM_SHARED){
 				lock_t* slock = lock_obj->next;
 				while(slock && slock->lock_mode==LM_SHARED){
+					// Trx* trx = trx_find(lock_obj->owner_trx_id);
+					// pthread_mutex_lock(&trx->trx_latch);
 					pthread_cond_signal(&(slock->cond));
+					// pthread_mutex_unlock(&trx->trx_latch);
+
 					slock = slock->next;
 				}
 			}else{
+				// Trx* trx = trx_find(lock_obj->next->owner_trx_id);
+				// pthread_mutex_lock(&trx->trx_latch);
 				pthread_cond_signal(&(lock_obj->next->cond));
+				// pthread_mutex_unlock(&trx->trx_latch);
 			}
 		}
 		

@@ -49,6 +49,7 @@ struct lock_t {
 struct Trx {
 	int trxID;
 	lock_t* head;
+	pthread_mutex_t trx_latch;
 
 	struct Trx* next;
 }typedef Trx;
@@ -64,13 +65,14 @@ void trx_print_lock(int trxID);
 /* APIs for transaction table */
 int trx_hash(int trxID);
 Trx* trx_new(int trxID);
-void trx_insert_lock(int trx_id, lock_t* lock);
+void trx_insert_lock(int trx_id, lock_t* lock, int trx_lock);
 Trx* trx_find(int trxID);
 void trx_delete(int trxID);
 
 /* APIs for lock table */
 int init_lock_table(void);
 int lock_acquire(int table_id, int64_t key, int trx_id, int lock_mode,lock_t* ret_lock);
+void lock_wait(lock_t* lock_obj);
 int lock_release(lock_t* lock_obj);
 void lock_engrave(lock_t* lock_obj, pagenum_t page_num, char* value);
 int terminate_lock_table(void);

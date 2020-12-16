@@ -100,6 +100,8 @@ void setPageNum(InternalPage* page, int i, pagenum_t pageNum);
 void file();
 // Open datafile
 int file_open_table(char* pathname, int mode);
+int file_open_log(char* pathname, int mode);
+int file_open_logmsg(char* pathname, int mode);
 // Check file is open
 int file_table_is_open(void);
 // Close datafile
@@ -112,5 +114,6 @@ void file_free_page(pagenum_t pagenum);
 void file_read_page(tableid tableID, pagenum_t pagenum, page_t* dest);
 // Write an in-memory page(src) to the on-disk page
 void file_write_page(tableid tableID, pagenum_t pagenum, const page_t* src);
+
 
 #endif /* __FILE_H__*/

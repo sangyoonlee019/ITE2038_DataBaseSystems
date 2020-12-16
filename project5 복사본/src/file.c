@@ -43,6 +43,63 @@ int file_open_table(char* pathname, int mode){
     return dataFile;
 }
 
+// Open datafile
+int file_open_log(char* pathname, int mode){
+    int fd;
+    switch (mode){
+    case OPEN_EXIST:
+        fd = open(pathname, O_RDWR|O_SYNC, 0644);
+        if (fd==-1) return -1;
+        break;
+    case OPEN_NEW:
+        fd = open(pathname, O_RDWR|O_CREAT|O_SYNC, 0644);
+        if (fd==-1) return -1;
+        break;
+    default:
+        printf("error: file_open_log mode is wrong\n");
+        break;
+    }
+    return fd;
+}
+
+// Open datafile
+int file_open_logmsg(char* pathname, int mode){
+    int fd;
+    switch (mode){
+    case OPEN_EXIST:
+        fd = open(pathname, O_RDWR|O_SYNC, 0644);
+        if (fd==-1) return -1;
+        break;
+    case OPEN_NEW:
+        fd = open(pathname, O_RDWR|O_CREAT|O_SYNC, 0644);
+        if (fd==-1) return -1;
+        break;
+    default:
+        printf("error: file_open_logmsg mode is wrong\n");
+        break;
+    }
+    return fd;
+}
+
+// Open datafile
+int file_open_table(char* pathname, int mode){
+    int dataFile;
+    switch (mode){
+    case OPEN_EXIST:
+        dataFile = open(pathname, O_RDWR|O_SYNC, 0644);
+        if (dataFile==-1) return -1;
+        break;
+    case OPEN_NEW:
+        dataFile = open(pathname, O_RDWR|O_CREAT|O_SYNC, 0644);
+        if (dataFile==-1) return -1;
+        break;
+    default:
+        printf("error: file_open_table mode is wrong\n");
+        break;
+    }
+    return dataFile;
+}
+
 // Close datafile
 int file_close_table(int dataFile){
     if (close(dataFile)==-1){
@@ -60,6 +117,24 @@ void file_read_page(int dataFile, pagenum_t pagenum, page_t* dest){
 
 // Write an in-memory page(src) to the on-disk page
 void file_write_page(int dataFile, pagenum_t pagenum, const page_t* src){ 
+    lseek(dataFile, PAGE_SIZE*pagenum, SEEK_SET);
+    write(dataFile, src, PAGE_SIZE);
+}
+
+// Read an on-disk page into the in-memory page structure(dest)
+void file_read_log(int dataFile, pagenum_t pagenum, page_t* dest){ 
+    lseek(dataFile, PAGE_SIZE*pagenum, SEEK_SET);
+    read(dataFile, dest, PAGE_SIZE);
+}
+
+// Write an in-memory page(src) to the on-disk page
+void file_write_log(int dataFile, pagenum_t pagenum, const page_t* src){ 
+    lseek(dataFile, PAGE_SIZE*pagenum, SEEK_SET);
+    write(dataFile, src, PAGE_SIZE);
+}
+
+// Write an in-memory page(src) to the on-disk page
+void file_write_logmsg(int dataFile, pagenum_t pagenum, const page_t* src){ 
     lseek(dataFile, PAGE_SIZE*pagenum, SEEK_SET);
     write(dataFile, src, PAGE_SIZE);
 }

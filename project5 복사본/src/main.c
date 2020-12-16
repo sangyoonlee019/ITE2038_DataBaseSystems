@@ -28,7 +28,7 @@ int main( int argc, char ** argv ) {
     char license_part;
 
     init_db(5);
-    int tid1 = open_table("sample_10000.db");
+    int tid1 = open_table("DATA14");
     // int i;
     // char tmp[120] = "sadf";
     // for (i=0;i<=958;i++){
@@ -122,7 +122,7 @@ int main( int argc, char ** argv ) {
         printf("trx before commit\n");
         trx_commit(trx_id);
         printf("trx after commit\n");
-        check_lock();
+        // check_lock();
     }
     shutdown_db();
     return EXIT_SUCCESS;
