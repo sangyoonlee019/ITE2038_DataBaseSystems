@@ -71,15 +71,6 @@ int shutdownDB(void){
 }
 
 int update(int tableID, int64_t key, char* value, int trxID){
-    // lock을 aqquire해주고 수행해야함
-    // Find the matching key and modify the values.
-    // return 0 (SUCCESS): operation is successfully done and the transaction can continue the next operation.
-    // return non-zero (FAILED): operation is failed 
-    // (e.g., deadlock detected) and the transaction should be aborted. 
-    // Note that all tasks that need to be handled 
-    // (e.g., releasing the locks that are held on this transaction, rollback of previous operations, etc... ) 
-    // should be completed in db_update().
-    // printf("@0\n");
     if (!buf_table_is_open(tableID)){
         return -1;
     }
@@ -88,9 +79,10 @@ int update(int tableID, int64_t key, char* value, int trxID){
     LeafPage leafNode;
     pagenum_t leafPageNum;
     
-    lock_t* lock = lock_acquire(tableID,key,trxID,LM_EXCLUSIVE);
+    lock_t* lock = (lock_t*)malloc(sizeof(lock_t));
+    int ret = lock_acquire(tableID,key,trxID,LM_EXCLUSIVE,lock);
     // printf("@2\n");
-    if (lock==NULL){
+    if (ret==DEADLOCK){
         // printf("@2-1\n");
         trx_abort(trxID);
         // printf("~~~~~~~~\n");
@@ -140,8 +132,10 @@ int find_new (int tableID, int64_t key, char * returnValue, int trxID){
     LeafPage leafNode;
     pagenum_t leafPageNum;
 
-    lock_t* lock = lock_acquire(tableID,key,trxID,LM_SHARED);
-    if (lock==NULL){
+    lock_t* lock = (lock_t*)malloc(sizeof(lock_t));
+    int ret = lock_acquire(tableID,key,trxID,LM_EXCLUSIVE,lock);
+
+    if (ret==DEADLOCK){
         trx_abort(trxID);
         // printf("~~~~~~~~\n");
         return -1;
