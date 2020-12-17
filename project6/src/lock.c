@@ -2,15 +2,16 @@
 #include "buf.h"
 #include "file.h"
 #include "db.h"
+#include "log.h"
 
 
 
 Node* lockTable[MAX_HASH];
 Trx* trxTable[MAX_HASH];
 
-
+int logmsgFile;
 int currentTrxID = DEFAULT_TRX_ID;
-int debug1 = 0;
+int debug1 = 1;
 pthread_mutex_t lock_table_latch = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t trx_table_latch = PTHREAD_MUTEX_INITIALIZER;
 
@@ -20,12 +21,19 @@ lock_trx_begin(void){
 	pthread_mutex_lock(&trx_table_latch);
 	
 	int newTrxID = currentTrxID;
-	if (trx_new(newTrxID)==NULL){
+	Trx* newTrx = trx_new(newTrxID);
+	if (newTrx==NULL){
 		pthread_mutex_unlock(&trx_table_latch);
 		printf("error: trx begin is failed!\n");
 		return 0;
 	}
 	currentTrxID++;
+
+	Log log;
+	lsn_t offset;
+	offset = log_new(&log, newTrxID, -1, LT_BEGIN); 	
+	log_write_log(&log);
+	newTrx->leastLSN = offset;	
 
 	pthread_mutex_unlock(&trx_table_latch);
 	return newTrxID;
@@ -33,6 +41,8 @@ lock_trx_begin(void){
 
 int 
 lock_trx_commit(int trxID){
+	lsn_t prevLSN;
+
 	if(debug1) printf("Trx%d: trx_commit (lock: %d trx: %d)\n",trxID,lock_check_lock(),trx_check_lock());
 	pthread_mutex_lock(&trx_table_latch);
 	Trx* trx = trx_find(trxID);
@@ -55,9 +65,16 @@ lock_trx_commit(int trxID){
 		lock_release(lock);
 	}
 	
+	prevLSN = trx->leastLSN;
 	trx_delete(trxID);
+
+	Log log;
+	log_new(&log, trxID, prevLSN, LT_COMMIT); 	
+	log_write_log(&log);
+
 	pthread_mutex_unlock(&trx_table_latch);
 	if(debug1) printf("Trx%d: trx_commit end (lock: %d trx: %d)\n",trxID,lock_check_lock(),trx_check_lock());
+	
 	return trxID;
 }
 
@@ -70,59 +87,92 @@ int trx_abort(int trxID){
 		return -1;
 	} 
 	
-	// printf("@1\n");
-	lock_t* lock = trx->head;
-	if (lock ==NULL){
-		return -1;
-	}
-	// printf("@2\n");
-	lock_t* nextLock = lock->trx_next;
-	if (lock->lock_mode == LM_EXCLUSIVE){
-		// Roll Back
-		LeafPage leafNode;
-		// printf("buf: %d\n",buf_check_lock());
-		buf_get_page(lock->sentinal->tableID, lock->page_num, (page_t*)&leafNode);
-		for (int i=0;i<leafNode.numberOfKeys;i++){
-			if (leafNode.records[i].key == lock->sentinal->recordID){
-				// printf("history1\n");
-				memcpy(leafNode.records[i].value,history,VALUE_SIZE);
-				buf_set_page(lock->sentinal->tableID, lock->page_num, (page_t*)&leafNode);
-				// printf("history1-end\n");
-				break;
-			}
-		}
-		buf_unpin_page(lock->sentinal->tableID, lock->page_num);
-		// printf("bufend: %d\n",buf_check_lock());
-	}
-	// printf("@3\n");
-	lock_release(lock);
-	// printf("@4\n");
-	while(nextLock){
-		lock = nextLock;
-		if (lock->lock_mode == LM_EXCLUSIVE){
-			// Roll Back
-			LeafPage leafNode;
-			// printf("buf: %d\n",buf_check_lock());
-			buf_get_page(lock->sentinal->tableID, lock->page_num, (page_t*)&leafNode);
-			for (int i=0;i<leafNode.numberOfKeys;i++){
-				if (leafNode.records[i].key == lock->sentinal->recordID){
-					// printf("history2\n");
-					memcpy(leafNode.records[i].value,history,VALUE_SIZE);
-					buf_set_page(lock->sentinal->tableID, lock->page_num, (page_t*)&leafNode);
-					// printf("history2-end\n");
-					break;
-				}
-			}
-			buf_unpin_page(lock->sentinal->tableID, lock->page_num);
-			// printf("bufend: %d\n",buf_check_lock());
-		}
+	// Compensation
+	Log clog;
+	lsn_t retLSN = log_read_log(trx->leastLSN, &clog);
+	while(retLSN && clog.type==LT_UPDATE){
+		Log newLog;
+		log_new(&newLog,trxID,trx->leastLSN, LT_COMPENSATE);
+		// New Log Info
+		newLog.tableID = clog.tableID;
+		newLog.pageNumber = clog.pageNumber;
+		newLog.offset = clog.offset;
+		newLog.dataLength = clog.dataLength;
+		memcpy(newLog.newImage,clog.oldImage,VALUE_SIZE);
+		memcpy(newLog.oldImage,clog.newImage,VALUE_SIZE);
 
-		nextLock = lock->trx_next;
-		lock_release(lock);
+		trx->leastLSN = newLog.LSN; 
+		log_write_log(&newLog);
+
+		// Rollback
+		LeafPage leafNode;
+		buf_get_page(clog.tableID, clog.pageNumber, (page_t*)&leafNode);
+		memcpy(&leafNode+clog.offset,clog.oldImage,VALUE_SIZE);
+		buf_set_page(clog.tableID, clog.pageNumber, (page_t*)&leafNode);
+
+		log_read_log(clog.prevLSN, &clog);
 	}
+
+	// // printf("@1\n");
+	// lock_t* lock = trx->head;
+	// if (lock ==NULL){
+	// 	return -1;
+	// }
+	// // printf("@2\n");
+	// lock_t* nextLock = lock->trx_next;
+	// if (lock->lock_mode == LM_EXCLUSIVE){
+	// 	// Roll Back
+	// 	LeafPage leafNode;
+	// 	// printf("buf: %d\n",buf_check_lock());
+	// 	buf_get_page(lock->sentinal->tableID, lock->page_num, (page_t*)&leafNode);
+	// 	for (int i=0;i<leafNode.numberOfKeys;i++){
+	// 		if (leafNode.records[i].key == lock->sentinal->recordID){
+	// 			// printf("history1\n");
+	// 			memcpy(leafNode.records[i].value,lock->history,VALUE_SIZE);
+				// buf_set_page(lock->sentinal->tableID, lock->page_num, (page_t*)&leafNode);
+	// 			// printf("history1-end\n");
+	// 			break;
+	// 		}
+	// 	}
+	// 	buf_unpin_page(lock->sentinal->tableID, lock->page_num);
+	// 	// printf("bufend: %d\n",buf_check_lock());
+	// }
+	// // printf("@3\n");
+	// lock_release(lock);
+	// // printf("@4\n");
+	// while(nextLock){
+	// 	lock = nextLock;
+	// 	if (lock->lock_mode == LM_EXCLUSIVE){
+	// 		// Roll Back
+	// 		LeafPage leafNode;
+	// 		// printf("buf: %d\n",buf_check_lock());
+	// 		buf_get_page(lock->sentinal->tableID, lock->page_num, (page_t*)&leafNode);
+	// 		for (int i=0;i<leafNode.numberOfKeys;i++){
+	// 			if (leafNode.records[i].key == lock->sentinal->recordID){
+	// 				// printf("history2\n");
+	// 				memcpy(leafNode.records[i].value,lock->history,VALUE_SIZE);
+	// 				buf_set_page(lock->sentinal->tableID, lock->page_num, (page_t*)&leafNode);
+	// 				// printf("history2-end\n");
+	// 				break;
+	// 			}
+	// 		}
+	// 		buf_unpin_page(lock->sentinal->tableID, lock->page_num);
+	// 		// printf("bufend: %d\n",buf_check_lock());
+	// 	}
+
+	// 	nextLock = lock->trx_next;
+	// 	lock_release(lock);
+	// }
 	// printf("abort_end!\n");
-	trx_delete(trxID);
+
+	
+
+	Log rlog;
+	log_new(&rlog, trxID, trx->leastLSN, LT_ROLLBACK); 	
+	log_write_log(&rlog);
 	// printf("abort_end2!\n");
+	trx_delete(trxID);
+	log_flush();
 	pthread_mutex_unlock(&trx_table_latch);
 	if(debug1) printf("Trx%d: trx_abort end (lock: %d trx: %d)\n",trxID,lock_check_lock(),trx_check_lock());
 	return trxID;
@@ -145,7 +195,7 @@ trx_new(int trxID)
 	newTrx->trxID = trxID;
 	pthread_mutex_init(&newTrx->trx_latch,NULL);
 	newTrx->head = NULL;
-	newTrx->next = NULL;
+	newTrx->next = NULL; 
 
     int hash_key = trx_hash(trxID);
     if (trxTable[hash_key] == NULL)
@@ -185,6 +235,16 @@ trx_find(int trxID)
         }
     }
     return  NULL;
+}
+
+lsn_t trx_leastLSN(int trxID, lsn_t LSN){
+	lsn_t prevLSN;
+	// pthread_mutex_lock(&trx_table_latch);
+	Trx* trx = trx_find(trxID);
+	prevLSN = trx->leastLSN;
+	trx->leastLSN = LSN;
+	// pthread_mutex_unlock(&trx_table_latch);
+	return prevLSN;
 }
 
 void trx_insert_lock(int trx_id, lock_t* lock, int trx_lock){

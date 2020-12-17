@@ -7,6 +7,7 @@
 #include <string.h>
 
 #define MAX_LOG_SIZE 500000
+#define MAX_TRX_SIZE 500000
 
 #define LOG_BCR_SIZE 28
 #define LOG_ULR_SIZE 288
@@ -55,5 +56,6 @@ void recovery(void);
 int log_load(void);
 void log_terminate(void);
 void print_log(Log* log);
+lsn_t log_new(Log* log, int32_t trxID, lsn_t prevLSN, int32_t type);
 
 #endif /* __LOG_H__*/

@@ -50,6 +50,7 @@ struct Trx {
 	int trxID;
 	lock_t* head;
 	pthread_mutex_t trx_latch;
+	lsn_t leastLSN;
 
 	struct Trx* next;
 }typedef Trx;
@@ -61,6 +62,7 @@ int lock_trx_commit(int trxID);
 int trx_abort(int trxID);
 int trx_check_lock(void);
 void trx_print_lock(int trxID);
+lsn_t trx_leastLSN(int trxID,lsn_t LSN);
 
 /* APIs for transaction table */
 int trx_hash(int trxID);

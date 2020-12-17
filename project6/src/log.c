@@ -1,15 +1,19 @@
 #include "file.h"
 #include "log.h"
+#include "lock.h"
+#include "bpt.h"
 
 pthread_mutex_t log_buffer_manager_latch = PTHREAD_MUTEX_INITIALIZER;
 char* logBuffer;
-int offset;
-int flushOffset;
+lsn_t offset;
+lsn_t lastOffset;
+lsn_t flushOffset;
 int logmsgFile;
 
 int logFile;
 int logmsgFile;
-
+int loser[MAX_TRX_SIZE];
+lsn_t loserLastLSN[MAX_TRX_SIZE];
 
 // External API
 int log_initialize(char* logPath, char* logmsgPath){
@@ -30,6 +34,7 @@ int log_initialize(char* logPath, char* logmsgPath){
         }
     }
     offset = 0;
+    lastOffset = 0;
     logBuffer = (char*)malloc(sizeof(char)*MAX_LOG_SIZE);
     pthread_mutex_unlock(&log_buffer_manager_latch);
     return log_load();
@@ -45,6 +50,7 @@ int log_write_log(Log* log){
     }
 
     memcpy(logBuffer+offset,log,log->logSize);
+    lastOffset = offset;
     offset+=log->logSize;
     pthread_mutex_unlock(&log_buffer_manager_latch);
     return 1;
@@ -56,6 +62,7 @@ int log_flush(void){
     lseek(logFile, flushOffset, SEEK_SET);
     write(logFile, logBuffer, offset);
     offset = 0;
+    lastOffset = 0;
     flushOffset+=offset;
     pthread_mutex_unlock(&log_buffer_manager_latch);
     return 1;
@@ -66,15 +73,19 @@ void log_terminate(){
     file_close_logmsg();
 }
 
-// Inner API
-int log_load(void){
-    lseek(logFile, 0, SEEK_SET);
-    read(logFile, logBuffer, MAX_LOG_SIZE);
-    recovery();
-    return 1;
+lsn_t log_new(Log* log, int32_t trxID, lsn_t prevLSN, int32_t type){
+    log->LSN = offset;
+    log->prevLSN = prevLSN;
+    log->logSize = LOG_BCR_SIZE;
+    log->trxID = trxID;
+    log->type = type;
+
+    return offset;
 }
 
 lsn_t log_read_log(lsn_t LSN,Log* log){
+    if (LSN<0) return 0;
+    
     memcpy(log, logBuffer+LSN, LOG_BCR_SIZE);
     if(log->logSize==0)
         return 0;
@@ -84,17 +95,120 @@ lsn_t log_read_log(lsn_t LSN,Log* log){
     }else if (log->type==LT_COMPENSATE){
         memcpy(log, logBuffer+LSN, LOG_CLR_SIZE);
     }
-    offset = LSN+log->logSize;
-    flushOffset+=log->logSize;
-    return offset;
+
+    return LSN+log->logSize;
 }
+
+// Inner API
+int log_load(void){
+    lseek(logFile, 0, SEEK_SET);
+    read(logFile, logBuffer, MAX_LOG_SIZE);
+    recovery();
+    return 1;
+}
+
 
 void recovery(void){
     Log log;
-    while(log_read_log(offset, &log)){
+    int readOffset;
+    printf("offsetStart %llu\n",offset);
+    
+    // Analysis Pass
+    readOffset = 0;
+    while((readOffset = log_read_log(readOffset, &log))){
+        printf("printingLog...\n");
         print_log(&log);
+        if(log.type==LT_BEGIN){
+            loser[log.trxID] = 1;      
+            loserLastLSN[log.trxID] = log.LSN;                  
+        }else if(log.type==LT_COMMIT || log.type==LT_ROLLBACK){
+            loser[log.trxID] = 0;
+        }else {
+            if(loser[log.trxID]){
+                loserLastLSN[log.trxID] = log.LSN;
+            }
+        }
+    }
+
+    // Redo pass
+    readOffset = 0;
+    while((readOffset = log_read_log(readOffset, &log))){
+        pagenum_t pageNum = log.pageNumber;
+        char pathname[15];
+        sprintf(pathname,"DATA%d",log.tableID);
+        openTable(pathname);
+        LeafPage leafNode;
+        buf_get_page(log.tableID, log.pageNumber, (page_t*)&leafNode);
+        if(leafNode.pageLSN<log.LSN){
+            memcpy(&leafNode+log.offset,log.oldImage,VALUE_SIZE);
+            buf_set_page(log.tableID, log.pageNumber, (page_t*)&leafNode);
+        }else{
+            buf_unpin_page(log.tableID, log.pageNumber);
+        }
+    }
+
+    // Undo pass
+    for (int i=0;i<MAX_TRX_SIZE;i++){
+        if (loser[i]==1){
+            Trx* trx = trx_new(i);
+            trx->leastLSN = loserLastLSN[i];
+        }
+    }
+
+    while(1){
+        int noLooser = 1;
+        lsn_t maxLastLSN = 0;
+        int lastTrxID;
+        for (int i=0;i<MAX_TRX_SIZE;i++){
+            if (loser[i]==1){
+                // if (loserLastLSN[i]!=-1){
+                noLooser = 0;
+                if (maxLastLSN<loserLastLSN[i]){
+                    maxLastLSN=loserLastLSN[i];
+                    lastTrxID = i;
+                }
+                // } 
+            }
+        }
+        if (noLooser) break;
+
+        Log log;
+        log_read_log(maxLastLSN, &log);
+        if(log.type==LT_UPDATE || log.type==LT_COMPENSATE){
+            pagenum_t pageNum = log.pageNumber;
+            char pathname[15];
+            sprintf(pathname,"DATA%d",log.tableID);
+            openTable(pathname);
+            LeafPage leafNode;
+            buf_get_page(log.tableID, log.pageNumber, (page_t*)&leafNode);
+            if(leafNode.pageLSN>=log.LSN){
+                Log newLog;
+                log_new(&newLog, log.trxID, log.LSN, LT_COMPENSATE);
+                newLog.tableID = log.tableID;
+                newLog.pageNumber = log.pageNumber;
+                newLog.offset = log.offset;
+                newLog.dataLength = log.dataLength;
+                memcpy(newLog.newImage,log.oldImage,VALUE_SIZE);
+                memcpy(newLog.oldImage,log.newImage,VALUE_SIZE);
+                // 라스트 시퀀스 바꿔주기
+                log_write_log(&newLog);
+
+                memcpy(&leafNode+log.offset,log.oldImage,VALUE_SIZE);
+                leafNode.pageLSN = newLog.LSN;
+                buf_set_page(log.tableID, log.pageNumber, (page_t*)&leafNode);
+            }
+            loserLastLSN[log.trxID] = log.prevLSN;
+        }else if(log.type==LT_BEGIN){
+            Log newLog;
+            log_new(&newLog, log.trxID, log.LSN, LT_ROLLBACK);
+            log_write_log(&newLog);
+            loser[log.trxID] = 0;
+        }
+        
+
     }
 }
+
 
 void print_log(Log* log){
     if (log->type==LT_UPDATE){

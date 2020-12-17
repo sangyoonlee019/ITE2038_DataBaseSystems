@@ -110,17 +110,33 @@ int update(int tableID, int64_t key, char* value, int trxID){
     
     // printf("@4\n");
     // BS
+    Log log;
     buf_pin_page(tableID, leafPageNum);
     for (int i=0;i<leafNode.numberOfKeys;i++){
         if (leafNode.records[i].key == key){
-            lock_engrave(lock, leafPageNum, leafNode.records[i].value);
+            // lock_engrave(lock, leafPageNum, leafNode.records[i].value);
+            memcpy(log.oldImage,leafNode.records[i].value,VALUE_SIZE);
             memcpy(leafNode.records[i].value,value,VALUE_SIZE);
+            lsn_t pageLSN = log_new(&log,trxID,-1,LT_UPDATE);
+            leafNode.pageLSN = pageLSN; 
             buf_set_page(tableID, leafPageNum, (page_t*)&leafNode);
+
+            lsn_t prevLSN =  trx_leastLSN(trxID,pageLSN);
+            log.prevLSN = prevLSN;
+            log.tableID = tableID;
+            log.pageNumber = leafPageNum;
+            log.offset = PAGE_HEADER_SIZE + i*128;
+            log.dataLength = 128;
+            memcpy(log.newImage,value,VALUE_SIZE);
+            log_write_log(&log);
+
             return 0;
         }
     }
     buf_unpin_page(tableID, leafPageNum);
 
+    
+    
     return -1;
 }
 
@@ -258,9 +274,10 @@ pagenum_t findLeaf(int tableID, int64_t key, LeafPage* retLeafNode){
 int insert (int tableID, int64_t key, char * value){
     // Table is not opend yet.
     if (!buf_table_is_open(tableID)){
+        printf("table is not open yet!\n");
         return -1;
     }
-
+    printf("1\n");
     /* The current implementation ignores
      * duplicates.
      */
@@ -269,7 +286,7 @@ int insert (int tableID, int64_t key, char * value){
     if (find(tableID, key, valueFound) == 0){
         return -1;
     }   
-    
+    printf("2\n");
     /* Case: the tree does not exist yet.
      * Start a new tree.
      */

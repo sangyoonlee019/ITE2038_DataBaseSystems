@@ -150,22 +150,26 @@ single_thread_test()
 	pthread_mutex_init(&SST_mutex, NULL);
 
 	/* Initiate database. */
-	init_db(DATABASE_BUFFER_SIZE);
-
+	init_db(DATABASE_BUFFER_SIZE,0,0,"log","logmsg");
+	
 	/* open table */
 	for (int i = 0; i < SST_TABLE_NUMBER; i++) {
 		char* str = (char*) malloc(sizeof(char) * 100);
 		TableId table_id;
-		sprintf(str, "DATA%02d.db", i);
+		sprintf(str, "DATA%d", i);
 		table_id = open_table(str);
+		printf("TableID %d--------------------------\n",table_id);
 		table_id_array[i] = table_id;
 
 		/* insertion */
 		for (Key key = 0; key < SST_TABLE_SIZE; key++) {
 			Value value;
 			sprintf(value, "%d", 0);
+			printf("1--------------------------\n");
 			db_insert(table_id, key, value);
+			printf("2--------------------------\n");
 		}
+		printf("3--------------------------\n");
 		printTreeValue(table_id);
 	}
 
@@ -289,13 +293,13 @@ slock_test()
 	pthread_mutex_init(&SLT_mutex, NULL);
 
 	/* Initiate database. */
-	init_db(DATABASE_BUFFER_SIZE);
+	init_db(DATABASE_BUFFER_SIZE,0,0,"log","logmsg");
 
 	/* open table */
 	for (int i = 0; i < SLT_TABLE_NUMBER; i++) {
 		char* str = (char*) malloc(sizeof(char) * 100);
 		TableId table_id;
-		sprintf(str, "DATA%02d.db", i);
+		sprintf(str, "DATA%d", i);
 		table_id = open_table(str);
 		table_id_array[i] = table_id;
 
@@ -430,13 +434,13 @@ xlock_test()
 	pthread_mutex_init(&XLT_mutex, NULL);
 
 	/* Initiate database. */
-	init_db(DATABASE_BUFFER_SIZE);
+	init_db(DATABASE_BUFFER_SIZE,0,0,"log","logmsg");
 
 	/* open table */
 	for (int i = 0; i < XLT_TABLE_NUMBER; i++) {
 		char* str = (char*) malloc(sizeof(char) * 100);
 		TableId table_id;
-		sprintf(str, "DATA%02d.db", i);
+		sprintf(str, "DATA%0d", i);
 		table_id = open_table(str);
 		table_id_array[i] = table_id;
 
@@ -586,13 +590,13 @@ mlock_test()
 	pthread_mutex_init(&MLT_mutex, NULL);
 
 	/* Initiate database. */
-	init_db(DATABASE_BUFFER_SIZE);
+	init_db(DATABASE_BUFFER_SIZE,0,0,"log","logmsg");
 
 	/* open table */
 	for (int i = 0; i < MLT_TABLE_NUMBER; i++) {
 		char* str = (char*) malloc(sizeof(char) * 100);
 		TableId table_id;
-		sprintf(str, "DATA%02d.db", i);
+		sprintf(str, "DATA%d", i);
 		table_id = open_table(str);
 		table_id_array[i] = table_id;
 
@@ -744,13 +748,13 @@ deadlock_test()
 	pthread_mutex_init(&DLT_mutex, NULL);
 
 	/* Initiate database. */
-	init_db(DATABASE_BUFFER_SIZE);
+	init_db(DATABASE_BUFFER_SIZE,0,0,"log","logmsg");
 
 	/* open table */
 	for (int i = 0; i < DLT_TABLE_NUMBER; i++) {
 		char* str = (char*) malloc(sizeof(char) * 100);
 		TableId table_id;
-		sprintf(str, "DATA%02d.db", i);
+		sprintf(str, "DATA%d", i);
 		table_id = open_table(str);
 		table_id_array[i] = table_id;
 
