@@ -136,20 +136,22 @@ void recovery(int flag, int log_num){
     // Redo pass
     readOffset = 0;
     while((readOffset = log_read_log(readOffset, &log))){
-        pagenum_t pageNum = log.pageNumber;
-        char pathname[15];
-        sprintf(pathname,"DATA%d",log.tableID);
-        openTable(pathname);
-        LeafPage leafNode;
-        buf_get_page(log.tableID, log.pageNumber, (page_t*)&leafNode);
-        if(leafNode.pageLSN<log.LSN){
-            memcpy(&leafNode+log.offset,log.oldImage,VALUE_SIZE);
-            buf_set_page(log.tableID, log.pageNumber, (page_t*)&leafNode);
-        }else{
-            buf_unpin_page(log.tableID, log.pageNumber);
+        if(log.type==LT_UPDATE || log.type==LT_COMPENSATE){
+            pagenum_t pageNum = log.pageNumber;
+            char pathname[15];
+            sprintf(pathname,"DATA%d",log.tableID);
+            openTable(pathname);
+            LeafPage leafNode;
+            buf_get_page(log.tableID, log.pageNumber, (page_t*)&leafNode);
+            if(leafNode.pageLSN<log.LSN){
+                memcpy(&leafNode+log.offset,log.oldImage,VALUE_SIZE);
+                buf_set_page(log.tableID, log.pageNumber, (page_t*)&leafNode);
+            }else{
+                buf_unpin_page(log.tableID, log.pageNumber);
+            }
+            logCount++;
+            if (flag==REDO_CRASH && logCount==log_num) return; 
         }
-        logCount++;
-        if (flag==REDO_CRASH && logCount==log_num) return; 
     }
 
     // Undo pass
