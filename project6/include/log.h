@@ -19,6 +19,9 @@
 #define LT_ROLLBACK 3
 #define LT_COMPENSATE 4
 
+#define REDO_CRASH 1
+#define UNDO_CRASH 2
+
 struct UpdateLog{
     char size[LOG_ULR_SIZE];
 }typedef UpdateLog;
@@ -48,12 +51,12 @@ struct Log {
 }typedef Log;
 #pragma pack(pop)
 
-int log_initialize(char* logPath, char* logmsgPath);
+int log_initialize(int flag,int log_num,char* logPath, char* logmsgPath);
 int log_flush(void);
 int log_write_log(Log* log);
 lsn_t log_read_log(lsn_t LSN,Log* log);
-void recovery(void);
-int log_load(void);
+void recovery(int flag, int log_num);
+int log_load(int flag, int log_num);
 void log_terminate(void);
 void print_log(Log* log);
 lsn_t log_new(Log* log, int32_t trxID, lsn_t prevLSN, int32_t type);

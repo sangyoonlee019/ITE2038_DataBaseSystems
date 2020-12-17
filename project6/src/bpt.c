@@ -43,7 +43,7 @@ int initDB(int bufferNum, int flag, int log_num, char* log_path, char* logmsg_pa
         return -1;
     }
     printf("!!!!\n");
-    ret = log_initialize(log_path,logmsg_path);
+    ret = log_initialize(flag,log_num,log_path,logmsg_path);
     return ret;
 }
 

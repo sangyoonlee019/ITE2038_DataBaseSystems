@@ -16,7 +16,7 @@ int loser[MAX_TRX_SIZE];
 lsn_t loserLastLSN[MAX_TRX_SIZE];
 
 // External API
-int log_initialize(char* logPath, char* logmsgPath){
+int log_initialize(int flag,int log_num,char* logPath, char* logmsgPath){
     printf("%s,%s \n",logPath,logmsgPath);
     pthread_mutex_lock(&log_buffer_manager_latch);
     
@@ -36,8 +36,10 @@ int log_initialize(char* logPath, char* logmsgPath){
     offset = 0;
     lastOffset = 0;
     logBuffer = (char*)malloc(sizeof(char)*MAX_LOG_SIZE);
+    
+    int ret = log_load(flag,log_num);
     pthread_mutex_unlock(&log_buffer_manager_latch);
-    return log_load();
+    return ret;
 }
 
 int log_write_log(Log* log){
@@ -100,16 +102,17 @@ lsn_t log_read_log(lsn_t LSN,Log* log){
 }
 
 // Inner API
-int log_load(void){
+int log_load(int flag, int log_num){
     lseek(logFile, 0, SEEK_SET);
     read(logFile, logBuffer, MAX_LOG_SIZE);
-    recovery();
-    return 1;
+    recovery(flag, log_num);
+    return 0;
 }
 
 
-void recovery(void){
+void recovery(int flag, int log_num){
     Log log;
+    int logCount = 0;
     int readOffset;
     printf("offsetStart %llu\n",offset);
     
@@ -145,9 +148,12 @@ void recovery(void){
         }else{
             buf_unpin_page(log.tableID, log.pageNumber);
         }
+        logCount++;
+        if (flag==REDO_CRASH && logCount==log_num) return; 
     }
 
     // Undo pass
+    logCount = 0;
     for (int i=0;i<MAX_TRX_SIZE;i++){
         if (loser[i]==1){
             Trx* trx = trx_new(i);
@@ -204,8 +210,8 @@ void recovery(void){
             log_write_log(&newLog);
             loser[log.trxID] = 0;
         }
-        
-
+        logCount++;
+        if (flag==UNDO_CRASH && logCount==log_num) return; 
     }
 }
 
