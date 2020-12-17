@@ -10,8 +10,8 @@ LIBS=lib/
 # OBJS:=$(SRCS:.c=.o)
 
 # main source file
-TARGET_SRC:=$(SRCDIR)test2.c
-TARGET_OBJ:=$(SRCDIR)test2.o
+TARGET_SRC:=$(SRCDIR)main.c
+TARGET_OBJ:=$(SRCDIR)main.o
 STATIC_LIB:=$(LIBS)libbpt.a
 
 # Include more files if you write another source file.
@@ -20,6 +20,7 @@ SRCS_FOR_LIB:= \
 	$(SRCDIR)bpt.c \
 	$(SRCDIR)buf.c \
 	$(SRCDIR)lock.c \
+	$(SRCDIR)log.c \
 	$(SRCDIR)file.c
 
 OBJS_FOR_LIB:=$(SRCS_FOR_LIB:.c=.o)

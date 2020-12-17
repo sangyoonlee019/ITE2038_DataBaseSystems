@@ -6,6 +6,8 @@
 #include <pthread.h>
 #include "file.h"
 
+#define DEFAULT_LOG_BUFFER_NUMBER 100
+
 #define BUFFER_SIZE PAGE_SIZE + 3
 #define DEFAULT_BUFFER_NUMBER 10
 
@@ -77,6 +79,8 @@ void buf_get_page(tableid tableID, pagenum_t pagenum, page_t* dest);
 void buf_set_page(tableid tableID, pagenum_t pagenum, const page_t* src);
 
 void buf_unpin_page(tableid tableID, pagenum_t pagenum);
+
+void buf_pin_page(tableid tableID, pagenum_t pagenum);
 
 int buf_find_page(tableid tableID, pagenum_t pagenum);
 

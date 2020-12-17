@@ -6,14 +6,17 @@
 
 int currentTableID = DEFAULT_TABLE_ID;
 int numberOfBuffer = DEFAULT_BUFFER_NUMBER;
+int numberOfLogBuffer = DEFAULT_LOG_BUFFER_NUMBER;
 pthread_mutex_t buffer_manager_latch = PTHREAD_MUTEX_INITIALIZER;
 int debug = 0;
 int bufferUse;
+int logBufferUse;
 int tableList[MAX_TABLE_NUM+1];
 char* history[MAX_TABLE_NUM+1];
 
 Buffer* bufferArray;
 BufferControlBlock LRUList;
+
 
 int buf_check_lock(){
     if (pthread_mutex_trylock(&buffer_manager_latch)!=0){
@@ -54,6 +57,7 @@ int buf_initialize(int num_buf){
         tableList[i] = UNUSED;
         history[i] = (char*)malloc(MAX_PATHNAME_LENGHT+1);
     }
+
     return 0;
 }
 
@@ -77,11 +81,18 @@ int buf_terminate(){
 }
 
 int buf_find_tableID(char* pathname){
-    for (int i=1;i<=MAX_TABLE_NUM;i++){
-        if (strcmp(history[i],pathname)==0)
-            return i;
-    }
-    return -1;
+    int tableID;
+    char* remainder; 
+    remainder = pathname + 4;
+    tableID = atoi(strtok(remainder," "));
+    
+    printf("talbeID %d!\n",tableID);
+    return tableID;
+    // for (int i=1;i<=MAX_TABLE_NUM;i++){
+    //     if (strcmp(history[i],pathname)==0)
+    //         return i;
+    // }
+    // return -1;
 }
 
 int buf_open_table(char* pathname, int mode){
@@ -316,6 +327,17 @@ void buf_unpin_page(tableid tableID, pagenum_t pageNum){
         printf("error: unpin mismatch!!\n");
     }else{
         int r = pthread_mutex_unlock(&(bufferArray[setBufferIdx].controlBlock.page_latch));
+    }
+}
+
+void buf_pin_page(tableid tableID, pagenum_t pageNum){
+    if (debug) printf("--------pin page%llu-%d\n",pageNum,tableID);
+    int setBufferIdx = buf_find_page(tableID, pageNum);
+
+    if (setBufferIdx==-1){
+        printf("error: unpin mismatch!!\n");
+    }else{
+        int r = pthread_mutex_lock(&(bufferArray[setBufferIdx].controlBlock.page_latch));
     }
 }
 

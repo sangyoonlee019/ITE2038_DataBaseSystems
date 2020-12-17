@@ -25,6 +25,7 @@
 
 #define HEADER_PAGE_NUMBER 0
 
+typedef uint64_t lsn_t;
 typedef int tableid;
 typedef uint64_t pagenum_t; 
 struct page_t {
@@ -46,14 +47,17 @@ struct HeaderPage{
     pagenum_t freePageNumber;
     pagenum_t rootPageNumber;
     pagenum_t numberOfPage;
-    char reserved[PAGE_SIZE - 24];
+    lsn_t pageLSN;
+    char reserved[PAGE_SIZE - 32];
 }typedef HeaderPage;
 #pragma pack(pop)
 
 #pragma pack(push,8)
 struct FreePage{
     pagenum_t nextFreePageNumber;
-    char notUsed[PAGE_SIZE - 8];
+    char notUsed1[16];
+    lsn_t pageLSN;
+    char notUsed2[PAGE_SIZE - 32];
 }typedef FreePage;
 #pragma pack(pop)
 
@@ -62,7 +66,9 @@ struct LeafPage{
     pagenum_t parentPageNumber;
     int32_t isLeaf;
     int32_t numberOfKeys;
-    char reserved[PAGE_HEADER_SIZE - 24];
+    char reserved1[8];
+    lsn_t pageLSN;
+    char reserved2[PAGE_HEADER_SIZE - 32];
     pagenum_t rightSiblingPageNumber;
     Record records[DEFAULT_LEAF_ORDER-1];
 }typedef LeafPage;
@@ -73,7 +79,9 @@ struct InternalPage{
     pagenum_t parentPageNumber;
     int32_t isLeaf;
     int32_t numberOfKeys;
-    char reserved[PAGE_HEADER_SIZE - 24];
+    char reserved1[8];
+    lsn_t pageLSN;
+    char reserved2[PAGE_HEADER_SIZE - 24];
     pagenum_t oneMorePageNumber;
     RecordID recordIDs[DEFAULT_INTERNAL_ORDER-1];
 }typedef InternalPage;
@@ -84,12 +92,16 @@ struct NodePage{
     pagenum_t parentPageNumber;
     int32_t isLeaf;
     int32_t numberOfKeys;
-    char reserved[PAGE_HEADER_SIZE - 24];
+    char reserved1[8];
+    lsn_t pageLSN;
+    char reserved2[PAGE_HEADER_SIZE - 24];
     pagenum_t specialPageNumber;
     char notUsed[PAGE_SIZE-PAGE_HEADER_SIZE];
 }typedef NodePage;
 #pragma pack(pop)
 
+extern int logFile;
+extern int logmsgFile;
 
 // Get ith page number in recordID arr in InternalPage.
 pagenum_t pageNumOf(InternalPage* page, int i);
@@ -100,10 +112,14 @@ void setPageNum(InternalPage* page, int i, pagenum_t pageNum);
 void file();
 // Open datafile
 int file_open_table(char* pathname, int mode);
+int file_open_log(char* pathname, int mode);
+int file_open_logmsg(char* pathname, int mode);
 // Check file is open
 int file_table_is_open(void);
 // Close datafile
 int file_close_table();
+int file_close_log();
+int file_close_logmsg();
 // Allocate an on-disk page from the free page list
 pagenum_t file_alloc_page();
 // Free an on-disk page to the free page list
@@ -112,5 +128,6 @@ void file_free_page(pagenum_t pagenum);
 void file_read_page(tableid tableID, pagenum_t pagenum, page_t* dest);
 // Write an in-memory page(src) to the on-disk page
 void file_write_page(tableid tableID, pagenum_t pagenum, const page_t* src);
+
 
 #endif /* __FILE_H__*/

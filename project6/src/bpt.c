@@ -9,6 +9,7 @@
 #include "bpt.h"
 #include "buf.h"
 #include "lock.h"
+#include "log.h"
 
 // GLOBALS.
 
@@ -36,8 +37,14 @@ pagenum_t queue[MAX_NODE_NUMBER];
 
 // OUTPUT AND UTILITIES
 
-int initDB(int bufferNum){
-    return buf_initialize(bufferNum);
+int initDB(int bufferNum, int flag, int log_num, char* log_path, char* logmsg_path){
+    int ret = buf_initialize(bufferNum);
+    if (ret<0){
+        return -1;
+    }
+    printf("!!!!\n");
+    ret = log_initialize(log_path,logmsg_path);
+    return ret;
 }
 
 /* Open table from path's datafile.
@@ -59,6 +66,7 @@ int openTable( char* pathname ){
         headerPage.numberOfPage = 1;
         buf_set_page(tableID,HEADER_PAGE_NUMBER,(page_t*)&headerPage);
     }
+
     return tableID;
 }
 
@@ -67,43 +75,42 @@ int closeTable(int tableID){
 }
 
 int shutdownDB(void){
-    return buf_terminate();
+    int ret = buf_terminate();
+    if (ret==-1){
+        return -1;
+    }
+    log_terminate();
+    return 0;
 }
 
 int update(int tableID, int64_t key, char* value, int trxID){
-    // lock을 aqquire해주고 수행해야함
-    // Find the matching key and modify the values.
-    // return 0 (SUCCESS): operation is successfully done and the transaction can continue the next operation.
-    // return non-zero (FAILED): operation is failed 
-    // (e.g., deadlock detected) and the transaction should be aborted. 
-    // Note that all tasks that need to be handled 
-    // (e.g., releasing the locks that are held on this transaction, rollback of previous operations, etc... ) 
-    // should be completed in db_update().
-    // printf("@0\n");
     if (!buf_table_is_open(tableID)){
         return -1;
     }
 
-    // printf("@1\n");
+    // printf("update!!\n");
     LeafPage leafNode;
     pagenum_t leafPageNum;
-    
-    lock_t* lock = lock_acquire(tableID,key,trxID,LM_EXCLUSIVE);
-    // printf("@2\n");
-    if (lock==NULL){
-        // printf("@2-1\n");
-        trx_abort(trxID);
-        // printf("~~~~~~~~\n");
-        return -1;
-    }
-    // printf("@3\n");
+
     leafPageNum = findLeaf(tableID,key,&leafNode);
     if(leafPageNum==0){
         buf_unpin_page(tableID, leafPageNum);    
         return -2;
     }
+    buf_unpin_page(tableID, leafPageNum);    
+
+    lock_t* lock = (lock_t*)malloc(sizeof(lock_t));
+    int ret = lock_acquire(tableID,key,trxID,LM_EXCLUSIVE,lock);
+    // printf("@2\n");
+    if (ret==DEADLOCK){
+        trx_abort(trxID);
+        return -1;
+    }
+    // printf("@3\n");
+    
     // printf("@4\n");
     // BS
+    buf_pin_page(tableID, leafPageNum);
     for (int i=0;i<leafNode.numberOfKeys;i++){
         if (leafNode.records[i].key == key){
             lock_engrave(lock, leafPageNum, leafNode.records[i].value);
@@ -140,20 +147,23 @@ int find_new (int tableID, int64_t key, char * returnValue, int trxID){
     LeafPage leafNode;
     pagenum_t leafPageNum;
 
-    lock_t* lock = lock_acquire(tableID,key,trxID,LM_SHARED);
-    if (lock==NULL){
-        trx_abort(trxID);
-        // printf("~~~~~~~~\n");
-        return -1;
-    }
-    // printf("@2\n");
     leafPageNum = findLeaf(tableID,key,&leafNode);
     if(leafPageNum==0){
         buf_unpin_page(tableID, leafPageNum);    
         return -2;
     }
-    // printf("@3\n");
+    buf_unpin_page(tableID, leafPageNum);
+
+    lock_t* lock = (lock_t*)malloc(sizeof(lock_t));
+    int ret = lock_acquire(tableID,key,trxID,LM_SHARED,lock);
+
+    if (ret==DEADLOCK){
+        trx_abort(trxID);
+        return -1;
+    }
+
     // BS
+    buf_pin_page(tableID, leafPageNum);
     for (int i=0;i<leafNode.numberOfKeys;i++){
         if (leafNode.records[i].key == key){
             // printf("@6\n");

@@ -4,9 +4,13 @@
 #include "file.h"
 
 
-int init_db(int buf_num){
-    return initDB(buf_num);
+int init_db(int buf_num, int flag, int log_num, char* log_path, char* logmsg_path){
+    return initDB(buf_num, flag, log_num, log_path, logmsg_path);
 }
+
+// int init_db(int buf_num){
+//     return initDB(buf_num);
+// }
 
 int open_table(char* pathname){
     return openTable(pathname);
