@@ -85,7 +85,7 @@ lsn_t log_new(Log* log, int32_t trxID, lsn_t prevLSN, int32_t type){
 
 lsn_t log_read_log(lsn_t LSN,Log* log){
     if (LSN<0) return 0;
-    
+    pthread_mutex_lock(&log_buffer_manager_latch);
     memcpy(log, logBuffer+LSN, LOG_BCR_SIZE);
     if(log->logSize==0)
         return 0;
@@ -95,7 +95,7 @@ lsn_t log_read_log(lsn_t LSN,Log* log){
     }else if (log->type==LT_COMPENSATE){
         memcpy(log, logBuffer+LSN, LOG_CLR_SIZE);
     }
-
+    pthread_mutex_unlock(&log_buffer_manager_latch);
     return LSN+log->logSize;
 }
 
